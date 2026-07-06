@@ -226,6 +226,20 @@ def transcode_to_mp4(src: Path, dest: Path, probe: MediaProbe | None = None) -> 
         raise BizError("视频转码未生成有效文件", 500)
 
 
+def _write_web_mp4(src: Path, dest: Path, probe: MediaProbe) -> None:
+    """写入标准 MP4；源与目标同路径时用临时文件，避免 ffmpeg 原地覆盖失败。"""
+    if src.resolve() == dest.resolve():
+        tmp = dest.parent / f"{dest.stem}.faststart.tmp.mp4"
+        try:
+            transcode_to_mp4(src, tmp, probe)
+            tmp.replace(dest)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
+    else:
+        transcode_to_mp4(src, dest, probe)
+
+
 def prepare_for_web_playback(src: Path, upload_id: str) -> PreparedVideo:
     """必要时转码/重封装为 MP4，并返回最终路径与元数据。"""
     if not src.is_file():
@@ -234,18 +248,19 @@ def prepare_for_web_playback(src: Path, upload_id: str) -> PreparedVideo:
     probe = probe_media(src)
     target = src.parent / f"{upload_id}.mp4"
 
-    if needs_transcode(src, probe):
-        transcode_to_mp4(src, target, probe)
-        if src.resolve() != target.resolve():
-            src.unlink(missing_ok=True)
-        out = target
-    elif settings.VIDEO_TRANSCODE_ENABLED and src.suffix.lower() != ".mp4":
-        transcode_to_mp4(src, target, probe)
+    if not settings.VIDEO_TRANSCODE_ENABLED:
+        out = src
+    elif needs_transcode(src, probe):
+        _write_web_mp4(src, target, probe)
         if src.resolve() != target.resolve():
             src.unlink(missing_ok=True)
         out = target
     else:
-        out = src
+        # H.264+AAC 等可拷贝：仍重封装并写入 faststart，避免 moov 在文件尾导致无法从头播放
+        _write_web_mp4(src, target, probe)
+        if src.resolve() != target.resolve():
+            src.unlink(missing_ok=True)
+        out = target
 
     final_probe = probe_media(out)
     duration = final_probe.duration_sec or probe.duration_sec

@@ -198,11 +198,21 @@
         renderLoginBox(v.play_block_reason);
       } else {
         document.getElementById("playerArea").innerHTML =
-          '<video controls autoplay playsinline controlslist="nodownload" disablePictureInPicture>' +
-          '<source src="' + VideoHub.streamUrl(v.id, accessToken) + '" type="' + (v.mime_type || "video/mp4") + '" />' +
+          '<video controls autoplay playsinline preload="auto" controlslist="nodownload" disablePictureInPicture>' +
+          '<source src="' + VideoHub.streamUrl(v.id, accessToken) + '" type="video/mp4" />' +
           "</video>";
         const player = document.querySelector("#playerArea video");
-        if (player) player.addEventListener("play", recordViewOnce, { once: true });
+        if (player) {
+          player.addEventListener("play", recordViewOnce, { once: true });
+          player.addEventListener("error", function () {
+            const code = player.error && player.error.code;
+            const msg = code === 4 ? "视频格式不受支持" : "视频加载失败，请刷新或联系管理员";
+            document.getElementById("playerArea").insertAdjacentHTML(
+              "beforeend",
+              '<p class="play-error" style="color:#f56c6c;margin-top:8px;font-size:14px">' + msg + "</p>"
+            );
+          });
+        }
       }
       loadSidebar(v.id, qsAlbum());
       VideoComments.mount(v.id, "commentSection");

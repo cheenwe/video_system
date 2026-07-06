@@ -287,13 +287,7 @@ def api_video_stream(
     path = video_service.video_abs_path(video)
     if not path.is_file():
         raise BizError("视频文件不存在", 404)
-    media = video_service.stream_media_type(video)
-    return FileResponse(
-        path=str(path),
-        media_type=media,
-        filename=video.original_filename or path.name,
-        stat_result=path.stat(),
-    )
+    return video_service.build_stream_response(video, path)
 
 
 @router.put("/api/videos/{video_id}")
