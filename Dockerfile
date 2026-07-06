@@ -17,7 +17,9 @@ RUN if [ "$APT_MIRROR" = "huawei" ]; then \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ARG PIP_MIRROR=huawei
+COPY scripts/docker-pip-install.sh /tmp/docker-pip-install.sh
+RUN PIP_MIRROR="${PIP_MIRROR}" sh /tmp/docker-pip-install.sh
 
 COPY . .
 

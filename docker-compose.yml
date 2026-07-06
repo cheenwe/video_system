@@ -60,6 +60,7 @@ services:
       dockerfile: Dockerfile.slim
       args:
         APT_MIRROR: ${APT_MIRROR:-huawei}
+        PIP_MIRROR: ${PIP_MIRROR:-huawei}
     image: ${LAB_SYSTEM_IMAGE:-lab_system:local-slim}
     container_name: lab_system_sqlite
     profiles: ["sqlite"]
@@ -105,6 +106,7 @@ services:
       dockerfile: Dockerfile
       args:
         APT_MIRROR: ${APT_MIRROR:-huawei}
+        PIP_MIRROR: ${PIP_MIRROR:-huawei}
     image: ${LAB_SYSTEM_IMAGE:-lab_system:local}
     container_name: lab_system_app
     profiles: ["mysql"]
@@ -128,6 +130,7 @@ services:
       dockerfile: Dockerfile
       args:
         APT_MIRROR: ${APT_MIRROR:-huawei}
+        PIP_MIRROR: ${PIP_MIRROR:-huawei}
     image: ${LAB_SYSTEM_IMAGE:-lab_system:local}
     container_name: lab_system_app_prod
     profiles: ["prod"]

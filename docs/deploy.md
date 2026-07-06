@@ -155,10 +155,12 @@ docker compose exec app-sqlite ffmpeg -version
 | `Dockerfile` | MySQL 客户端库、gcc、curl、**ffmpeg** |
 | `Dockerfile.slim` | curl、**ffmpeg**（无 gcc，适合 SQLite） |
 
-国内构建无法访问 `deb.debian.org` 时，默认通过 `scripts/docker-apt-mirror.sh` 切换 **华为云 APT 镜像**（`APT_MIRROR=huawei`）。海外构建：
+国内构建无法访问 `deb.debian.org` 时，默认通过 `scripts/docker-apt-mirror.sh` 切换 **华为云 APT 镜像**（`APT_MIRROR=huawei`）。
+
+`pip install` 默认通过 `scripts/docker-pip-install.sh` 使用 **华为云 PyPI 镜像**（`PIP_MIRROR=huawei`，源地址 `https://repo.huaweicloud.com/repository/pypi/simple`）。海外构建：
 
 ```bash
-APT_MIRROR=off docker compose --profile sqlite up -d --build
+APT_MIRROR=off PIP_MIRROR=off docker compose --profile sqlite up -d --build
 ```
 
 ---
@@ -266,6 +268,7 @@ MySQL 备份需可执行 `mysqldump`（标准 `Dockerfile` 已含客户端库；
 | MOV 无法播放 | 确认 `VIDEO_TRANSCODE_ENABLED=true` 且容器内 `ffmpeg -version` 正常 |
 | 转码超时 | 增大 `VIDEO_TRANSCODE_TIMEOUT_SEC` 或压缩源文件 |
 | Docker 构建 apt 失败 | 使用默认 `APT_MIRROR=huawei` 或检查网络 |
+| Docker 构建 pip 失败 | 使用默认 `PIP_MIRROR=huawei`；或 `PIP_MIRROR=off` 并确保可访问 PyPI |
 | 端口不一致 | 容器内以 `PORT`/`APP_PORT` 为准；日志中 uvicorn 行才是实际监听 |
 | API 文档 404 | 生产 `DEBUG=false` 为预期行为 |
 
