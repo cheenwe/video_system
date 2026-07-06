@@ -273,8 +273,10 @@ def api_video_cover(
 
 
 @router.get("/api/videos/{video_id}/stream")
+@router.head("/api/videos/{video_id}/stream")
 def api_video_stream(
     video_id: int,
+    request: Request,
     v: str | None = Query(None, max_length=512),
     db: Session = Depends(get_db),
     me: Optional[User] = Depends(get_optional_user),
@@ -287,7 +289,7 @@ def api_video_stream(
     path = video_service.video_abs_path(video)
     if not path.is_file():
         raise BizError("视频文件不存在", 404)
-    return video_service.build_stream_response(video, path)
+    return video_service.build_stream_response(video, path, request)
 
 
 @router.put("/api/videos/{video_id}")

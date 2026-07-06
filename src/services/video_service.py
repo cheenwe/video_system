@@ -5,7 +5,8 @@ import mimetypes
 from pathlib import Path
 from typing import Optional, Tuple
 
-from fastapi.responses import FileResponse
+from starlette.requests import Request
+from starlette.responses import Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -287,12 +288,8 @@ def stream_media_type(video: Video) -> str:
     return guessed or "video/mp4"
 
 
-def build_stream_response(video: Video, path: Path) -> FileResponse:
-    """返回支持 Range 的 inline 视频流，避免 attachment 导致部分浏览器无法从头播放。"""
-    st = path.stat()
-    return FileResponse(
-        path=str(path),
-        media_type=stream_media_type(video),
-        stat_result=st,
-        content_disposition_type="inline",
-    )
+def build_stream_response(video: Video, path: Path, request: Request) -> Response:
+    """Range 分块流式输出，支持弱网边下边播。"""
+    from src.core.video_streaming import build_video_stream_response
+
+    return build_video_stream_response(request, path, stream_media_type(video))

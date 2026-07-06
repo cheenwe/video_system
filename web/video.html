@@ -52,6 +52,7 @@
   <script src="js/api.js"></script>
   <script src="js/site-branding.js"></script>
   <script src="js/video-hub.js"></script>
+  <script src="js/video-player.js"></script>
   <script src="js/video-comments.js"></script>
   <script src="js/video-interactions.js"></script>
   <script src="js/layout.js"></script>
@@ -197,22 +198,12 @@
       if (!v.can_play) {
         renderLoginBox(v.play_block_reason);
       } else {
-        document.getElementById("playerArea").innerHTML =
-          '<video controls autoplay playsinline preload="auto" controlslist="nodownload" disablePictureInPicture>' +
-          '<source src="' + VideoHub.streamUrl(v.id, accessToken) + '" type="video/mp4" />' +
-          "</video>";
-        const player = document.querySelector("#playerArea video");
-        if (player) {
-          player.addEventListener("play", recordViewOnce, { once: true });
-          player.addEventListener("error", function () {
-            const code = player.error && player.error.code;
-            const msg = code === 4 ? "视频格式不受支持" : "视频加载失败，请刷新或联系管理员";
-            document.getElementById("playerArea").insertAdjacentHTML(
-              "beforeend",
-              '<p class="play-error" style="color:#f56c6c;margin-top:8px;font-size:14px">' + msg + "</p>"
-            );
-          });
-        }
+        const streamSrc = VideoHub.streamUrl(v.id, accessToken);
+        const poster = v.cover_url ? VideoHub.coverUrl(v.cover_url, accessToken) : "";
+        VideoPlayer.mount(document.getElementById("playerArea"), streamSrc, {
+          poster: poster,
+          onPlay: recordViewOnce,
+        });
       }
       loadSidebar(v.id, qsAlbum());
       VideoComments.mount(v.id, "commentSection");
