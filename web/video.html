@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>播放 - V视频站</title>
+  <meta name="description" content="V视频站 - 在线观看与分享视频" />
+  <meta name="robots" content="index,follow" />
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/video-hub.css" />
+</head>
+<body>
+  <div class="hub-page">
+    <div class="hub-hero">
+      <div class="hub-hero-row">
+        <a href="index" class="hub-logo-link" id="hubLogoWrap">
+          <img class="hub-logo-img" id="hubLogoImg" alt="" style="display:none" />
+          <span class="hub-logo-text" id="hubLogoText">V视频站</span>
+        </a>
+        <div class="hub-search">
+          <input id="kw" type="search" placeholder="搜索视频标题或简介…" autocomplete="off" />
+          <button type="button" id="btnSearch">搜索</button>
+        </div>
+        <div class="hub-actions" id="hubActions"></div>
+      </div>
+    </div>
+    <div class="play-layout" style="padding-top:0;">
+      <div class="play-main">
+        <div id="playerArea"></div>
+        <h1 class="play-title" id="vTitle"></h1>
+        <div class="play-stats" id="vMeta"></div>
+        <div id="vActions"></div>
+        <div class="play-tags" id="vTags"></div>
+        <div class="play-desc" id="vDesc"></div>
+        <div class="play-comments-wrap">
+          <div id="commentSection"></div>
+        </div>
+      </div>
+      <aside class="play-side">
+        <div class="play-side-title" id="sideTitle">相关推荐</div>
+        <div id="recList"></div>
+      </aside>
+    </div>
+  </div>
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/site-branding.js"></script>
+  <script src="js/video-hub.js"></script>
+  <script src="js/video-comments.js"></script>
+  <script src="js/video-interactions.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    function qsV() {
+      return new URLSearchParams(location.search).get("v");
+    }
+
+    async function resolveAccessKey() {
+      const p = new URLSearchParams(location.search);
+      let v = p.get("v");
+      const legacyId = p.get("id");
+      if (!v && legacyId) {
+        const r = await LabAPI.get("/api/videos/" + legacyId);
+        if (LabAPI.ok(r) && r.data.ref) {
+          let u = "video?v=" + encodeURIComponent(r.data.ref);
+          const album = p.get("album");
+          if (album) u += "&album=" + encodeURIComponent(album);
+          location.replace(u);
+          return null;
+        }
+      }
+      if (!v) {
+        document.getElementById("playerArea").innerHTML = '<div class="hub-empty">缺少视频访问参数</div>';
+        return null;
+      }
+      return v;
+    }
+
+    function loginNext() {
+      return "login?next=" + encodeURIComponent(location.pathname + location.search);
+    }
+
+    function renderLoginBox(reason) {
+      let msg = "请登录后观看";
+      if (reason === "login_required_private") msg = "该视频为隐私内容，登录后才能播放";
+      if (reason === "login_required_site_policy") msg = "站点已关闭游客播放，请登录后观看";
+      document.getElementById("playerArea").innerHTML =
+        '<div class="play-login-box"><p>' + msg + '</p><a class="hub-btn-upload" href="' + loginNext() + '">立即登录</a></div>';
+    }
+
+    function qsAlbum() {
+      return new URLSearchParams(location.search).get("album");
+    }
+
+    function renderTags(v) {
+      const el = document.getElementById("vTags");
+      const parts = [];
+      if (v.category_id && v.category_name) {
+        parts.push('<a class="play-tag" href="index?cat=' + v.category_id + '">' + VideoHub.esc(v.category_name) + "</a>");
+      }
+      (v.albums || []).forEach((a) => {
+        parts.push('<a class="play-tag" href="album?id=' + a.id + '">专辑：' + VideoHub.esc(a.title) + "</a>");
+      });
+      el.innerHTML = parts.join("") || "";
+    }
+
+    async function loadSidebar(currentId, albumId) {
+      if (albumId) {
+        const ar = await LabAPI.get("/api/video-albums/" + albumId);
+        if (LabAPI.ok(ar)) {
+          document.getElementById("sideTitle").textContent = "专辑分集 · " + (ar.data.title || "");
+          const videos = ar.data.videos || [];
+          document.getElementById("recList").innerHTML = videos.map((v) =>
+            '<a class="play-rec' + (String(v.id) === String(currentId) ? " active" : "") + '" href="' + VideoHub.videoPageUrl(v, albumId) + '">' +
+            '<div class="rec-cover">' + VideoHub.recCoverHtml(v.cover_url, v.title, v.ref) + '<span class="rec-play-icon">▶</span></div>' +
+            '<div><div class="rec-title">' + VideoHub.esc(v.title) + '</div>' +
+            '<div class="rec-meta">' + VideoHub.formatViews(v.view_count) + '播放</div></div></a>'
+          ).join("") || '<div class="muted">暂无分集</div>';
+          return;
+        }
+      }
+      await loadRecommend(currentId);
+    }
+
+    async function loadRecommend(excludeId) {
+      const r = await LabAPI.get("/api/videos?page=1&page_size=8&visibility=public&exclude_id=" + excludeId);
+      if (!LabAPI.ok(r)) return;
+      const items = (r.data.items || []).filter((x) => String(x.id) !== String(excludeId));
+      document.getElementById("recList").innerHTML = items.slice(0, 6).map((v) =>
+        '<a class="play-rec" href="' + VideoHub.videoPageUrl(v) + '">' +
+        '<div class="rec-cover">' + VideoHub.recCoverHtml(v.cover_url, v.title, v.ref) + '<span class="rec-play-icon">▶</span></div>' +
+        '<div><div class="rec-title">' + VideoHub.esc(v.title) + '</div>' +
+        '<div class="rec-meta">' + VideoHub.formatViews(v.view_count) + '播放</div></div></a>'
+      ).join("") || '<div class="muted">暂无推荐</div>';
+    }
+
+    (async () => {
+      await LabLayout.ensureLogin(false);
+      LabLayout.initHubPage();
+      await SiteBranding.init();
+      VideoHub.renderHubActions("hubActions");
+      VideoHub.bindHubSearch();
+      const accessV = await resolveAccessKey();
+      if (!accessV) return;
+      const r = await LabAPI.get("/api/videos/access?v=" + encodeURIComponent(accessV));
+      if (!LabAPI.ok(r)) {
+        document.getElementById("playerArea").innerHTML =
+          '<div class="play-login-box"><p>' + LabAPI.msg(r) + '</p><a class="hub-btn-upload" href="' + loginNext() + '">去登录</a></div>';
+        return;
+      }
+      const v = r.data;
+      const accessToken = v.access_v || accessV;
+      const siteName = SiteBranding.getBranding().site_name || "V视频站";
+      SiteBranding.applySeo({
+        title: (v.title || "播放") + " - " + siteName,
+        description: (v.description || v.title || "").slice(0, 500),
+        url: location.pathname + location.search,
+        canonical: "/video?id=" + v.id,
+        image: v.cover_url,
+        ogType: "video.other",
+      });
+      document.getElementById("vTitle").textContent = v.title || "";
+
+      function renderMeta() {
+        let meta =
+          VideoHub.formatViews(v.view_count) + "播放 · " +
+          (v.visibility === "private" ? "隐私" : "公开") + " · " +
+          (v.uploader_name || "UP主") + " · " + (v.created_at || "");
+        if (v.share_public && v.share_expires_at) {
+          meta += " · 公开分享至 " + v.share_expires_at;
+        }
+        document.getElementById("vMeta").textContent = meta;
+      }
+      renderMeta();
+      VideoInteractions.mount("vActions", v);
+
+      let viewRecorded = false;
+      async function recordViewOnce() {
+        if (viewRecorded) return;
+        viewRecorded = true;
+        try {
+          const vr = await LabAPI.post("/api/videos/" + v.id + "/view?v=" + encodeURIComponent(accessToken));
+          if (LabAPI.ok(vr) && vr.data && vr.data.view_count != null) {
+            v.view_count = vr.data.view_count;
+            renderMeta();
+          }
+        } catch (_) {}
+      }
+      document.getElementById("vDesc").textContent = v.description || "（暂无简介）";
+      renderTags(v);
+
+      if (!v.can_play) {
+        renderLoginBox(v.play_block_reason);
+      } else {
+        document.getElementById("playerArea").innerHTML =
+          '<video controls autoplay playsinline controlslist="nodownload" disablePictureInPicture>' +
+          '<source src="' + VideoHub.streamUrl(v.id, accessToken) + '" type="' + (v.mime_type || "video/mp4") + '" />' +
+          "</video>";
+        const player = document.querySelector("#playerArea video");
+        if (player) player.addEventListener("play", recordViewOnce, { once: true });
+      }
+      loadSidebar(v.id, qsAlbum());
+      VideoComments.mount(v.id, "commentSection");
+    })();
+  </script>
+</body>
+</html>

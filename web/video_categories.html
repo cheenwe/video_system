@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>视频分类 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="card-box">
+    <div class="head"><h3>视频分类</h3></div>
+    <p class="muted" style="font-size:13px;margin:0 0 12px;">管理员维护视频分类，上传时可选择分类；首页支持按分类筛选。</p>
+    <div class="toolbar toolbar-list">
+      <span class="grow"></span>
+      <button class="btn primary" id="btnAdd">+ 新增分类</button>
+    </div>
+    <table class="table">
+      <thead><tr><th>名称</th><th>说明</th><th>排序</th><th>视频数</th><th width="160">操作</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+  <div class="modal-mask" id="md" style="display:none;">
+    <div class="modal-box" style="max-width:480px;">
+      <div class="head"><h3 id="mdTitle">新增分类</h3></div>
+      <div class="form-grid">
+        <div class="full"><label>名称</label><input id="fName" /></div>
+        <div class="full"><label>说明</label><input id="fDesc" /></div>
+        <div><label>排序</label><input id="fSort" type="number" value="0" /></div>
+      </div>
+      <div style="margin-top:16px;text-align:right;">
+        <button class="btn" id="btnCancel">取消</button>
+        <button class="btn primary" id="btnSave">保存</button>
+      </div>
+    </div>
+  </div>
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    let editId = null;
+    async function loadList() {
+      const r = await LabAPI.get("/api/video-categories");
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      document.getElementById("tb").innerHTML = (r.data || []).map((c) =>
+        "<tr><td>" + c.name + "</td><td>" + (c.description || "-") + "</td><td>" + c.sort_order +
+        "</td><td>" + (c.video_count || 0) + '</td><td><button class="btn sm" data-edit="' + c.id + '">编辑</button> ' +
+        '<button class="btn sm danger" data-del="' + c.id + '">删除</button></td></tr>'
+      ).join("") || '<tr><td colspan="5" class="muted">暂无分类</td></tr>';
+    }
+    function openModal(row) {
+      editId = row ? row.id : null;
+      document.getElementById("mdTitle").textContent = editId ? "编辑分类" : "新增分类";
+      document.getElementById("fName").value = row ? row.name : "";
+      document.getElementById("fDesc").value = row ? row.description : "";
+      document.getElementById("fSort").value = row ? row.sort_order : 0;
+      document.getElementById("md").style.display = "flex";
+    }
+    (async () => {
+      await LabLayout.ensureLogin();
+      if (!LabAPI.isAdmin()) { LabAPI.toast("需要管理员权限", "error"); location.href = "dashboard"; return; }
+      LabLayout.render("video_categories", "视频分类");
+      await loadList();
+      document.getElementById("btnAdd").onclick = () => openModal(null);
+      document.getElementById("btnCancel").onclick = () => { document.getElementById("md").style.display = "none"; };
+      document.getElementById("btnSave").onclick = async () => {
+        const body = {
+          name: document.getElementById("fName").value.trim(),
+          description: document.getElementById("fDesc").value.trim(),
+          sort_order: Number(document.getElementById("fSort").value) || 0,
+        };
+        const r = editId
+          ? await LabAPI.put("/api/video-categories/" + editId, body)
+          : await LabAPI.post("/api/video-categories", body);
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+        document.getElementById("md").style.display = "none";
+        LabAPI.toast("已保存", "success");
+        loadList();
+      };
+      document.getElementById("tb").addEventListener("click", async (e) => {
+        const edit = e.target.closest("[data-edit]");
+        const del = e.target.closest("[data-del]");
+        if (edit) {
+          const id = edit.dataset.edit;
+          const r = await LabAPI.get("/api/video-categories");
+          const row = (r.data || []).find((x) => String(x.id) === String(id));
+          openModal(row);
+        }
+        if (del && confirm("确定删除该分类？")) {
+          const r = await LabAPI.del("/api/video-categories/" + del.dataset.del);
+          if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+          LabAPI.toast("已删除", "success");
+          loadList();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

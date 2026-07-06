@@ -1,0 +1,17 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+SQLAlchemy>=2.0.36
+alembic>=1.13.3
+PyMySQL>=1.1.1
+cryptography>=43.0.3
+pydantic>=2.9.2
+pydantic-settings>=2.6.1
+python-multipart>=0.0.12
+PyJWT>=2.9.0
+bcrypt>=4.2.0
+python-dotenv>=1.0.1
+pytest>=8.0.0
+pluggy>=1.5.0
+APScheduler>=3.10.4
+psutil>=6.0.0
+redis>=5.0.0

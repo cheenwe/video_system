@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>站点外观 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/video-hub.css" />
+  <style>
+    .brand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .brand-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--card, #fff); }
+    .brand-preview { height: 80px; display: flex; align-items: center; justify-content: center; background: #f8fafc; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+    .brand-preview img { max-height: 64px; max-width: 100%; object-fit: contain; }
+    .brand-preview .placeholder { color: var(--muted); font-size: 13px; }
+    .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 8px; max-width: 720px; }
+    .theme-opt { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+    .theme-opt.active { border-color: var(--bili-pink); background: rgba(251,114,153,.08); }
+    .theme-opt input { margin: 0; }
+    .theme-swatch { width: 20px; height: 20px; border-radius: 50%; }
+  </style>
+</head>
+<body>
+  <div class="card-box">
+    <div class="head"><h3>站点外观</h3></div>
+    <p class="muted" style="font-size:13px;margin:0 0 16px;">配置视频站 Logo、浏览器图标、投稿按钮图标与全站主页色调。色调仅在此管理后台设置，前台用户不可自行切换。</p>
+
+    <div class="upload-field" style="max-width:520px;margin-bottom:20px;">
+      <label>站点名称</label>
+      <input type="text" id="fSiteName" maxlength="32" />
+    </div>
+
+    <div class="upload-field" style="max-width:520px;margin-bottom:20px;">
+      <label>页脚版权信息</label>
+      <input type="text" id="fCopyright" maxlength="200" placeholder="© {year} V视频站 版权所有 |微信: amwahaha" />
+      <div class="muted" style="font-size:12px;margin-top:4px;">显示在视频站各页面底部；可用 {year} 表示当前年份，留空则不显示</div>
+    </div>
+
+    <div class="upload-form-section-title" style="margin-bottom:12px;">全站主页色调</div>
+    <div class="theme-grid" id="themeGrid"></div>
+    <div style="margin:16px 0 24px;">
+      <button class="btn primary" id="btnSaveMeta">保存站点设置</button>
+    </div>
+
+    <div class="upload-form-section-title" style="margin-bottom:12px;">搜索引擎优化（SEO）</div>
+    <p class="muted" style="font-size:13px;margin:0 0 12px;">用于 meta 标签、Open Graph 与 <code>/robots.txt</code>、<code>/sitemap.xml</code>。填写「站点 URL」后 sitemap 将使用绝对地址。</p>
+    <div class="upload-field" style="max-width:640px;margin-bottom:16px;">
+      <label>SEO 标题</label>
+      <input type="text" id="fSeoTitle" maxlength="70" placeholder="V视频站 - 在线视频分享与点播" />
+    </div>
+    <div class="upload-field" style="max-width:640px;margin-bottom:16px;">
+      <label>SEO 描述</label>
+      <textarea id="fSeoDesc" rows="3" maxlength="500" placeholder="站点简介，显示在搜索结果摘要中"></textarea>
+    </div>
+    <div class="upload-field" style="max-width:640px;margin-bottom:16px;">
+      <label>SEO 关键词</label>
+      <input type="text" id="fSeoKeywords" maxlength="500" placeholder="视频,在线视频,视频分享（英文逗号分隔）" />
+    </div>
+    <div class="upload-field" style="max-width:520px;margin-bottom:16px;">
+      <label>站点 URL（canonical / sitemap）</label>
+      <input type="url" id="fSiteUrl" maxlength="200" placeholder="https://video.example.com" />
+    </div>
+    <div class="upload-field" style="max-width:520px;margin-bottom:16px;">
+      <label><input type="checkbox" id="fSeoIndexable" checked /> 允许搜索引擎收录（关闭后全站 noindex）</label>
+    </div>
+    <div style="margin:0 0 24px;">
+      <button class="btn primary" id="btnSaveSeo">保存 SEO 设置</button>
+      <a class="btn sm" href="/robots.txt" target="_blank" rel="noopener" style="margin-left:8px;">查看 robots.txt</a>
+      <a class="btn sm" href="/sitemap.xml" target="_blank" rel="noopener" style="margin-left:4px;">查看 sitemap.xml</a>
+    </div>
+
+    <div class="brand-grid">
+      <div class="brand-card">
+        <div><strong>站点 Logo</strong><div class="muted" style="font-size:12px;">建议 PNG/SVG，高度约 36px</div></div>
+        <div class="brand-preview" id="prevLogo"><span class="placeholder">未上传</span></div>
+        <input type="file" id="fLogo" accept="image/*,.svg,.ico" />
+        <div style="margin-top:8px;"><button class="btn sm" data-reset="logo">恢复默认</button></div>
+      </div>
+      <div class="brand-card">
+        <div><strong>浏览器图标 Favicon</strong><div class="muted" style="font-size:12px;">建议 32×32 或 64×64</div></div>
+        <div class="brand-preview" id="prevFavicon"><span class="placeholder">未上传</span></div>
+        <input type="file" id="fFavicon" accept="image/*,.svg,.ico" />
+        <div style="margin-top:8px;"><button class="btn sm" data-reset="favicon">恢复默认</button></div>
+      </div>
+      <div class="brand-card">
+        <div><strong>投稿按钮图标</strong><div class="muted" style="font-size:12px;">显示在顶栏「投稿」按钮前</div></div>
+        <div class="brand-preview" id="prevUpload"><span class="placeholder">未上传</span></div>
+        <input type="file" id="fUploadIcon" accept="image/*,.svg,.ico" />
+        <div style="margin-top:8px;"><button class="btn sm" data-reset="upload_icon">恢复默认</button></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/site-branding.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    let branding = {};
+    let selectedTheme = "pink";
+
+    function preview(elId, url, fallback) {
+      const el = document.getElementById(elId);
+      el.innerHTML = url
+        ? '<img src="' + url + '" alt="" />'
+        : '<span class="placeholder">' + fallback + "</span>";
+    }
+
+    function renderThemes(themes) {
+      document.getElementById("themeGrid").innerHTML = (themes || []).map((t) =>
+        '<label class="theme-opt' + (t.id === selectedTheme ? " active" : "") + '">' +
+        '<input type="radio" name="accent" value="' + t.id + '" ' + (t.id === selectedTheme ? "checked" : "") + ' />' +
+        '<span class="theme-swatch" style="background:' + t.primary + '"></span>' +
+        '<span>' + t.label + "</span></label>"
+      ).join("");
+      document.querySelectorAll('input[name="accent"]').forEach((inp) => {
+        inp.addEventListener("change", () => {
+          selectedTheme = inp.value;
+          document.querySelectorAll(".theme-opt").forEach((l) => l.classList.toggle("active", l.querySelector("input").value === selectedTheme));
+        });
+      });
+    }
+
+    async function load() {
+      const r = await LabAPI.get("/api/site/branding/admin");
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      branding = r.data;
+      selectedTheme = branding.accent_theme || "pink";
+      document.getElementById("fSiteName").value = branding.site_name || "";
+      document.getElementById("fCopyright").value = branding.copyright_text || "";
+      document.getElementById("fSeoTitle").value = branding.seo_title || "";
+      document.getElementById("fSeoDesc").value = branding.seo_description || "";
+      document.getElementById("fSeoKeywords").value = branding.seo_keywords || "";
+      document.getElementById("fSiteUrl").value = branding.site_url || "";
+      document.getElementById("fSeoIndexable").checked = branding.seo_indexable !== false;
+      renderThemes(branding.themes);
+      preview("prevLogo", branding.logo_url, "未上传 Logo");
+      preview("prevFavicon", branding.favicon_url, "未上传 Favicon");
+      preview("prevUpload", branding.upload_icon_url, "未上传投稿图标");
+    }
+
+    async function uploadAsset(asset, file) {
+      const fd = new FormData();
+      fd.append("asset", asset);
+      fd.append("file", file);
+      const token = LabAPI.getToken();
+      const resp = await fetch("/api/site/branding/upload", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: fd,
+      });
+      const data = await resp.json();
+      if (!data || data.success !== 1) return LabAPI.toast((data && data.msg) || "上传失败", "error");
+      LabAPI.toast("上传成功", "success");
+      branding = data.data;
+      load();
+    }
+
+    (async () => {
+      await LabLayout.ensureLogin();
+      if (!LabAPI.isAdmin()) { LabAPI.toast("需要管理员权限", "error"); location.href = "dashboard"; return; }
+      LabLayout.render("site_branding", "站点外观");
+      await load();
+      document.getElementById("btnSaveMeta").onclick = async () => {
+        const r = await LabAPI.put("/api/site/branding", {
+          site_name: document.getElementById("fSiteName").value.trim(),
+          accent_theme: selectedTheme,
+          copyright_text: document.getElementById("fCopyright").value.trim(),
+        });
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+        LabAPI.toast("已保存", "success");
+        load();
+      };
+      document.getElementById("btnSaveSeo").onclick = async () => {
+        const r = await LabAPI.put("/api/site/branding", {
+          seo_title: document.getElementById("fSeoTitle").value.trim(),
+          seo_description: document.getElementById("fSeoDesc").value.trim(),
+          seo_keywords: document.getElementById("fSeoKeywords").value.trim(),
+          site_url: document.getElementById("fSiteUrl").value.trim(),
+          seo_indexable: document.getElementById("fSeoIndexable").checked,
+        });
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+        LabAPI.toast("SEO 已保存", "success");
+        load();
+      };
+      [["fLogo", "logo"], ["fFavicon", "favicon"], ["fUploadIcon", "upload_icon"]].forEach(([id, asset]) => {
+        document.getElementById(id).addEventListener("change", () => {
+          const f = document.getElementById(id).files[0];
+          if (f) uploadAsset(asset, f);
+        });
+      });
+      document.querySelectorAll("[data-reset]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("确定恢复为默认？")) return;
+          const r = await LabAPI.del("/api/site/branding/" + btn.dataset.reset);
+          if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+          LabAPI.toast("已恢复", "success");
+          load();
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

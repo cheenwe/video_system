@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>编辑视频 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/video-hub.css" />
+</head>
+<body>
+  <div class="card-box vm-edit-page">
+    <div class="toolbar">
+      <a class="btn" href="video_system">← 返回列表</a>
+      <span class="grow"></span>
+      <a class="btn" id="btnPreview" href="#" target="_blank">预览</a>
+      <button type="button" class="btn danger" id="btnDelete">删除</button>
+      <button type="button" class="btn primary" id="btnSave">保存</button>
+    </div>
+
+    <div class="head"><h3 id="pageTitle">编辑视频</h3></div>
+    <p class="muted vm-edit-sub" id="pageSub">—</p>
+
+    <div class="vm-edit-section">
+      <div class="vm-edit-section-title">基本信息</div>
+      <div class="form-grid">
+        <div class="full"><label>标题</label><input id="eTitle" maxlength="200" /></div>
+        <div class="full"><label>简介</label><textarea id="eDesc" rows="4" maxlength="5000"></textarea></div>
+        <div><label>可见性</label>
+          <select id="eVis"><option value="public">公开</option><option value="private">隐私</option></select>
+        </div>
+        <div><label>分类</label>
+          <select id="eCategory"><option value="">无分类</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="vm-edit-section">
+      <div class="vm-edit-section-title">封面图</div>
+      <div class="upload-cover-box">
+        <div class="upload-cover-preview vm-edit-cover-preview" id="eCoverPreview">
+          <span class="upload-cover-placeholder">16:9<br />640×360</span>
+        </div>
+        <div class="upload-cover-actions">
+          <button type="button" class="btn sm" id="btnPickCover">上传并裁剪</button>
+          <button type="button" class="btn sm" id="btnClearCover" style="display:none">移除封面</button>
+          <input type="file" id="coverInput" accept="image/*" hidden />
+        </div>
+      </div>
+      <p class="muted" style="font-size:12px;margin:8px 0 0;">固定尺寸 640×360；保存时一并提交封面变更。</p>
+    </div>
+
+    <div class="vm-edit-section">
+      <div class="vm-edit-section-title">替换视频文件</div>
+      <p class="muted" style="font-size:12px;margin:0 0 10px;">上传新文件将替换当前视频，播放量等统计保留。支持断点续传。</p>
+      <div class="vm-replace-box">
+        <div class="vm-replace-meta" id="eFileMeta">当前文件：—</div>
+        <label class="btn sm" for="replaceInput">选择新视频</label>
+        <input type="file" id="replaceInput" class="upload-file-input-hidden" accept="video/*,.mp4,.mov,.mkv,.webm,.m4v,.avi" />
+        <div id="replacePanel" class="vm-replace-progress" style="display:none;">
+          <div class="upload-progress-wrap"><div class="upload-progress-bar" id="replaceBar"></div></div>
+          <div class="upload-progress-meta"><span id="replaceStatus">等待上传…</span><span id="replacePct">0%</span></div>
+        </div>
+        <button type="button" class="btn sm primary" id="btnReplace" disabled>确认替换视频</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/video-chunk-upload.js"></script>
+  <script src="js/video-cover-crop.js"></script>
+  <script>
+    let videoId = null;
+    let categories = [];
+    let coverBlob = null;
+    let coverPreviewUrl = null;
+    let coverDirty = false;
+    let replaceUploadId = null;
+    let replaceReady = false;
+
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    function formatSize(n) {
+      n = Number(n) || 0;
+      if (n >= 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
+      if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+      if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+      return n + " B";
+    }
+
+    let coverRef = null;
+
+    function coverSrc(url) {
+      if (!url) return "";
+      const base = url.split("?")[0];
+      const params = [];
+      const rest = url.indexOf("?") >= 0 ? url.split("?")[1] : "";
+      if (rest) {
+        rest.split("&").forEach((pair) => {
+          const idx = pair.indexOf("=");
+          if (idx <= 0) return;
+          const k = decodeURIComponent(pair.slice(0, idx));
+          const val = decodeURIComponent(pair.slice(idx + 1));
+          if (k === "v" && /^\d+$/.test(val)) return;
+          params.push(encodeURIComponent(k) + "=" + encodeURIComponent(val));
+        });
+      }
+      const t = LabAPI.getToken();
+      if (t) params.push("token=" + encodeURIComponent(t));
+      if (coverRef) params.push("v=" + encodeURIComponent(coverRef));
+      if (!params.length) return base;
+      return base + "?" + params.join("&");
+    }
+
+    function getVideoId() {
+      const q = new URLSearchParams(location.search);
+      const id = q.get("id");
+      return id ? Number(id) : null;
+    }
+
+    async function loadCategories() {
+      const r = await LabAPI.get("/api/video-categories");
+      if (LabAPI.ok(r)) categories = r.data || [];
+      const sel = document.getElementById("eCategory");
+      sel.innerHTML = '<option value="">无分类</option>' +
+        categories.map((c) => '<option value="' + c.id + '">' + esc(c.name) + "</option>").join("");
+    }
+
+    function resetCoverState() {
+      coverBlob = null;
+      coverDirty = false;
+      if (coverPreviewUrl) {
+        URL.revokeObjectURL(coverPreviewUrl);
+        coverPreviewUrl = null;
+      }
+    }
+
+    function renderCoverPreview(urlOrBlob) {
+      const el = document.getElementById("eCoverPreview");
+      const clearBtn = document.getElementById("btnClearCover");
+      el.innerHTML = "";
+      if (urlOrBlob instanceof Blob) {
+        coverPreviewUrl = URL.createObjectURL(urlOrBlob);
+        const img = document.createElement("img");
+        img.src = coverPreviewUrl;
+        img.alt = "封面";
+        el.appendChild(img);
+        if (clearBtn) clearBtn.style.display = "";
+      } else if (urlOrBlob) {
+        const img = document.createElement("img");
+        img.src = coverSrc(urlOrBlob);
+        img.alt = "封面";
+        el.appendChild(img);
+        if (clearBtn) clearBtn.style.display = "";
+      } else {
+        const ph = document.createElement("span");
+        ph.className = "upload-cover-placeholder";
+        ph.innerHTML = "16:9<br />640×360";
+        el.appendChild(ph);
+        if (clearBtn) clearBtn.style.display = "none";
+      }
+    }
+
+    function resetReplaceState() {
+      replaceUploadId = null;
+      replaceReady = false;
+      document.getElementById("replaceInput").value = "";
+      document.getElementById("replacePanel").style.display = "none";
+      document.getElementById("replaceBar").style.width = "0%";
+      document.getElementById("replacePct").textContent = "0%";
+      document.getElementById("replaceStatus").textContent = "等待上传…";
+      document.getElementById("btnReplace").disabled = true;
+    }
+
+    function fillForm(v) {
+      coverRef = v.ref || null;
+      document.getElementById("pageTitle").textContent = "编辑 · " + (v.title || "视频");
+      document.getElementById("pageSub").textContent =
+        "#" + v.id + " · " + (v.uploader_name || "UP主") + " · " + (v.created_at || "—") +
+        " · 播放 " + (v.view_count || 0);
+      document.getElementById("eTitle").value = v.title || "";
+      document.getElementById("eDesc").value = v.description || "";
+      document.getElementById("eVis").value = v.visibility || "public";
+      document.getElementById("eCategory").value = v.category_id ? String(v.category_id) : "";
+      document.getElementById("eFileMeta").textContent =
+        "当前文件：" + (v.original_filename || "—") + "（" + formatSize(v.file_size) + "）";
+      document.getElementById("btnPreview").href = v.ref ? ("video?v=" + encodeURIComponent(v.ref)) : ("video?id=" + v.id);
+      renderCoverPreview(v.cover_url || null);
+    }
+
+    async function loadVideo() {
+      videoId = getVideoId();
+      if (!videoId) {
+        LabAPI.toast("缺少视频 ID", "error");
+        location.href = "video_system";
+        return;
+      }
+      const r = await LabAPI.get("/api/videos/" + videoId);
+      if (!LabAPI.ok(r)) {
+        LabAPI.toast(LabAPI.msg(r), "error");
+        location.href = "video_system";
+        return;
+      }
+      if (!r.data.can_manage) {
+        LabAPI.toast("无权编辑该视频", "error");
+        location.href = "video_system";
+        return;
+      }
+      fillForm(r.data);
+    }
+
+    async function saveEdit() {
+      if (!videoId) return;
+      const title = document.getElementById("eTitle").value.trim();
+      if (!title) return LabAPI.toast("请填写标题", "error");
+      const catVal = document.getElementById("eCategory").value;
+      const body = {
+        title,
+        description: document.getElementById("eDesc").value.trim(),
+        visibility: document.getElementById("eVis").value,
+        category_id: catVal ? Number(catVal) : null,
+      };
+      const r = await LabAPI.put("/api/videos/" + videoId, body);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+
+      if (coverDirty) {
+        if (coverBlob) {
+          try {
+            await uploadCover(coverBlob);
+          } catch (e) {
+            return LabAPI.toast(e.message || "封面上传失败", "error");
+          }
+        } else {
+          const dr = await LabAPI.del("/api/videos/" + videoId + "/cover");
+          if (!LabAPI.ok(dr)) return LabAPI.toast(LabAPI.msg(dr), "error");
+        }
+        coverDirty = false;
+        coverBlob = null;
+      }
+
+      LabAPI.toast("已保存", "success");
+      const vr = await LabAPI.get("/api/videos/" + videoId);
+      if (LabAPI.ok(vr)) fillForm(vr.data);
+    }
+
+    async function uploadCover(blob) {
+      const token = LabAPI.getToken();
+      const resp = await fetch("/api/videos/" + videoId + "/cover", {
+        method: "PUT",
+        headers: {
+          Authorization: token ? "Bearer " + token : "",
+          "Content-Type": "image/jpeg",
+        },
+        body: blob,
+      });
+      const data = await resp.json();
+      if (!data || data.success !== 1) throw new Error((data && data.msg) || "封面上传失败");
+    }
+
+    async function onCoverSelected() {
+      const input = document.getElementById("coverInput");
+      const file = input.files && input.files[0];
+      input.value = "";
+      if (!file) return;
+      try {
+        const blob = await VideoCoverCrop.open(file);
+        coverBlob = blob;
+        coverDirty = true;
+        renderCoverPreview(blob);
+      } catch (e) {
+        if (e.message !== "cancelled") LabAPI.toast(e.message || "封面处理失败", "error");
+      }
+    }
+
+    function clearCoverLocal() {
+      coverBlob = null;
+      coverDirty = true;
+      renderCoverPreview(null);
+    }
+
+    async function onReplaceFileSelected() {
+      const input = document.getElementById("replaceInput");
+      const file = input.files && input.files[0];
+      if (!file) return;
+      resetReplaceState();
+      document.getElementById("replacePanel").style.display = "";
+      document.getElementById("btnReplace").disabled = true;
+      try {
+        replaceUploadId = await VideoChunkUpload.uploadFile(file, {
+          onProgress(pct, text) {
+            document.getElementById("replaceBar").style.width = pct + "%";
+            document.getElementById("replacePct").textContent = Math.round(pct) + "%";
+            document.getElementById("replaceStatus").textContent = text;
+          },
+        });
+        replaceReady = true;
+        document.getElementById("replaceStatus").textContent = "上传完成，可确认替换";
+        document.getElementById("btnReplace").disabled = false;
+      } catch (e) {
+        LabAPI.toast(e.message || "上传失败", "error");
+        resetReplaceState();
+      }
+    }
+
+    async function confirmReplace() {
+      if (!videoId || !replaceReady || !replaceUploadId) return;
+      if (!confirm("确定用新文件替换当前视频？此操作不可撤销。")) return;
+      const btn = document.getElementById("btnReplace");
+      btn.disabled = true;
+      btn.textContent = "替换中…";
+      const r = await LabAPI.post("/api/videos/" + videoId + "/replace", { upload_id: replaceUploadId });
+      btn.textContent = "确认替换视频";
+      if (!LabAPI.ok(r)) {
+        btn.disabled = false;
+        return LabAPI.toast(LabAPI.msg(r), "error");
+      }
+      LabAPI.toast("视频已替换", "success");
+      document.getElementById("eFileMeta").textContent =
+        "当前文件：" + (r.data.original_filename || "—") + "（" + formatSize(r.data.file_size) + "）";
+      resetReplaceState();
+    }
+
+    async function confirmDelete() {
+      if (!videoId) return;
+      if (!confirm("确定删除该视频？文件与封面将一并删除。")) return;
+      const r = await LabAPI.del("/api/videos/" + videoId);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast("已删除", "success");
+      location.href = "video_system";
+    }
+
+    (async () => {
+      await LabLayout.ensureLogin();
+      LabLayout.render("video_system", "编辑视频");
+      await loadCategories();
+      await loadVideo();
+
+      document.getElementById("btnSave").onclick = saveEdit;
+      document.getElementById("btnDelete").onclick = confirmDelete;
+      document.getElementById("btnPickCover").onclick = () => document.getElementById("coverInput").click();
+      document.getElementById("coverInput").onchange = onCoverSelected;
+      document.getElementById("btnClearCover").onclick = clearCoverLocal;
+      document.getElementById("replaceInput").onchange = onReplaceFileSelected;
+      document.getElementById("btnReplace").onclick = confirmReplace;
+    })();
+  </script>
+</body>
+</html>

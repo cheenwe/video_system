@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>投稿 - V视频站</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/video-hub.css" />
+</head>
+<body>
+  <div class="hub-page upload-page">
+    <div class="hub-hero">
+      <div class="hub-hero-row">
+        <a href="index" class="hub-logo-link" id="hubLogoWrap">
+          <img class="hub-logo-img" id="hubLogoImg" alt="" style="display:none" />
+          <span class="hub-logo-text" id="hubLogoText">V视频站</span>
+        </a>
+        <span class="muted" style="font-size:14px;">创作中心 · 投稿</span>
+        <div class="hub-actions" id="hubActions"></div>
+      </div>
+    </div>
+
+    <div class="upload-shell">
+      <div class="upload-steps">
+        <span class="step active" id="stepUpload">1. 上传视频</span>
+        <span class="step" id="stepInfo">2. 填写信息</span>
+        <span class="step" id="stepPublish">3. 发布</span>
+      </div>
+
+      <div class="upload-layout">
+        <div class="upload-left">
+          <div id="dropZone" class="upload-dropzone">
+            <div class="upload-dropzone-icon" id="uploadDropIcon">↑</div>
+            <p class="upload-dropzone-title">拖拽视频到此处，或点击选择文件</p>
+            <p class="upload-dropzone-hint">支持 MP4、MOV、WEBM、MKV 等格式<br />支持断点续传，刷新后选同一文件可继续</p>
+            <label class="upload-dropzone-btn" id="btnPickFile" for="fileInput">选择视频</label>
+          </div>
+          <input type="file" id="fileInput" class="upload-file-input-hidden" accept="video/*,.mp4,.mov,.mkv,.webm,.m4v,.avi" />
+          <div id="filePanel" class="upload-file-panel" style="display:none;">
+            <div class="upload-file-name" id="fileName"></div>
+            <div class="upload-progress-wrap"><div class="upload-progress-bar" id="progressInner"></div></div>
+            <div class="upload-progress-meta">
+              <span id="uploadStatus">等待上传…</span>
+              <span id="uploadPct">0%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="upload-right">
+          <div class="upload-form-card">
+            <div class="upload-form-section">
+              <div class="upload-form-section-title">基本信息</div>
+              <div class="upload-field">
+                <label><span class="req">*</span>标题</label>
+                <input type="text" id="fTitle" maxlength="200" placeholder="填写清晰标题，便于搜索" />
+              </div>
+              <div class="upload-field">
+                <label>简介</label>
+                <textarea id="fDesc" maxlength="5000" placeholder="介绍一下视频内容（选填）"></textarea>
+              </div>
+              <div class="upload-field">
+                <label>封面图</label>
+                <div class="upload-cover-box">
+                  <div class="upload-cover-preview" id="coverPreview">
+                    <span class="upload-cover-placeholder">16:9<br />640×360</span>
+                  </div>
+                  <div class="upload-cover-actions">
+                    <button type="button" class="btn sm" id="btnPickCover">上传并裁剪</button>
+                    <button type="button" class="btn sm" id="btnClearCover" style="display:none">移除封面</button>
+                  </div>
+                  <input type="file" id="coverInput" accept="image/*" hidden />
+                </div>
+                <div class="upload-field-hint">固定尺寸 640×360，支持拖拽与滚轮缩放后裁剪</div>
+              </div>
+            </div>
+
+            <div class="upload-form-section">
+              <div class="upload-form-section-title">分区与合集</div>
+              <div class="upload-field">
+                <label>分类</label>
+                <div class="upload-combobox-wrap" id="catWrap">
+                  <input type="text" id="fCategory" autocomplete="off" placeholder="输入或选择分类，不存在将自动创建" />
+                  <div class="upload-combobox-list" id="catList"></div>
+                </div>
+                <div class="upload-field-hint">可手动输入新分类名称</div>
+              </div>
+              <div class="upload-field">
+                <label>专辑</label>
+                <div class="upload-combobox-wrap" id="albumWrap">
+                  <input type="text" id="fAlbum" autocomplete="off" placeholder="输入或选择专辑，不存在将自动创建" />
+                  <div class="upload-combobox-list" id="albumList"></div>
+                </div>
+                <div class="upload-field-hint">仅会匹配/创建您名下的专辑</div>
+              </div>
+            </div>
+
+            <div class="upload-form-section">
+              <div class="upload-form-section-title">可见性</div>
+              <div class="upload-vis-row">
+                <label class="upload-vis-option"><input type="radio" name="vis" value="public" checked /> 公开</label>
+                <label class="upload-vis-option"><input type="radio" name="vis" value="private" /> 隐私（须登录）</label>
+              </div>
+            </div>
+
+            <button type="button" class="upload-submit" id="btnPublish" disabled>立即投稿</button>
+            <a class="upload-back-link" href="index">返回首页</a>
+
+            <div class="upload-tips">
+              投稿即表示您确认拥有视频版权。上传过程中可提前填写信息；视频传完后点击「立即投稿」即可发布。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/site-branding.js"></script>
+  <script src="js/video-hub.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/video-upload.js"></script>
+  <script src="js/video-cover-crop.js"></script>
+  <script>
+    (async () => {
+      await LabLayout.ensureLogin();
+      LabLayout.initHubPage();
+      await SiteBranding.init();
+      VideoHub.renderHubActions("hubActions");
+      await VideoUpload.init();
+    })();
+  </script>
+</body>
+</html>

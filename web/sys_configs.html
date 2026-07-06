@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>系统配置 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="card-box">
+    <ul class="nav nav-tabs mb-3" id="sysConfigMainTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link active" id="tabBtnConfig" data-bs-toggle="tab" data-bs-target="#tab-pane-config" role="tab" aria-controls="tab-pane-config" aria-selected="true">配置项</button>
+      </li>
+      <li class="nav-item d-none" role="presentation" id="liTabEnv">
+        <button type="button" class="nav-link" id="tabBtnEnv" data-bs-toggle="tab" data-bs-target="#tab-pane-env" role="tab" aria-controls="tab-pane-env" aria-selected="false">运行环境 (.env)</button>
+      </li>
+      <li class="nav-item d-none" role="presentation" id="liTabServer">
+        <button type="button" class="nav-link" id="tabBtnServer" data-bs-toggle="tab" data-bs-target="#tab-pane-server" role="tab" aria-controls="tab-pane-server" aria-selected="false">服务器状态</button>
+      </li>
+    </ul>
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="tab-pane-config" role="tabpanel" aria-labelledby="tabBtnConfig" tabindex="0">
+  <div id="viewList">
+    <p class="muted" style="margin:0 0 12px;font-size:13px;line-height:1.55;">
+      键值对形式的系统参数；可在「运行环境」页维护 .env，在「服务器状态」页查看资源占用。
+    </p>
+    <div class="toolbar toolbar-list">
+      <input id="filterCategory" placeholder="分类" style="max-width:140px;" />
+      <div class="toolbar-search-input-btn">
+        <input id="kw" placeholder="搜索 key/value" style="max-width:200px;" />
+        <button type="button" class="btn" id="btnSearch">搜索</button>
+      </div>
+      <span class="grow"></span>
+      <button class="btn primary" id="btnAdd">+ 新增</button>
+    </div>
+    <table class="table">
+      <thead><tr><th>分类</th><th>键</th><th>值</th><th>版本</th><th>状态</th><th>更新时间</th><th width="160">操作</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="pagination" id="pg"></div>
+  </div>
+
+  <div id="viewDetail" style="display:none;">
+    <div class="card-box" style="margin-top:0;">
+      <div class="toolbar">
+        <button class="btn" id="btnBack">← 返回列表</button>
+        <span class="grow"></span>
+        <button class="btn primary" id="btnSave">保存</button>
+      </div>
+      <div class="head"><h3 id="mdTitle">新增配置</h3></div>
+      <div class="form-grid">
+        <div><label>分类</label><input id="f_category" /></div>
+        <div><label>键</label><input id="f_code" /></div>
+        <div><label>版本</label><input id="f_version" /></div>
+        <div><label>状态</label><select id="f_status"><option value="active">启用</option><option value="inactive">停用</option></select></div>
+        <div class="full"><label>值</label><textarea id="f_value"></textarea></div>
+      </div>
+    </div>
+  </div>
+      </div>
+
+      <div class="tab-pane fade" id="tab-pane-env" role="tabpanel" aria-labelledby="tabBtnEnv" tabindex="0">
+        <div id="envCard">
+          <div class="head"><h3 style="margin:0;">.env 运行参数</h3></div>
+          <p id="envHint" class="muted" style="margin:8px 0 0;font-size:13px;line-height:1.55;"></p>
+          <p id="envPath" class="muted" style="margin:4px 0 12px;font-size:12px;"></p>
+          <div class="toolbar" style="margin-bottom:10px;">
+            <button type="button" class="btn primary" id="btnEnvSave">保存到 .env</button>
+            <button type="button" class="btn" id="btnEnvExport">导出 .env</button>
+            <button type="button" class="btn" id="btnEnvImportPick">导入 .env</button>
+            <button type="button" class="btn" id="btnBackupEmailDebug">调试：备份邮件</button>
+            <label class="muted" style="font-size:12px;margin-left:4px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="checkbox" id="chkBackupForce" />
+              <span>忽略 BACKUP_EMAIL_ENABLED（仅调试）</span>
+            </label>
+            <input type="file" id="envImportFile" accept=".env,.txt,text/plain" style="display:none;" />
+          </div>
+          <div style="max-height:520px;overflow:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+            <table class="table" style="margin:0;">
+              <thead><tr><th style="width:18%;min-width:120px;">变量名</th><th style="width:22%;min-width:160px;">当前值</th><th>说明</th><th style="width:18%;min-width:120px;">示例值</th></tr></thead>
+              <tbody id="envTb"></tbody>
+            </table>
+          </div>
+          <details id="envExampleWrap" style="margin-top:14px;">
+            <summary style="cursor:pointer;font-weight:600;font-size:14px;">参考：完整 .env 示例（与仓库 .env.example 一致，可复制）</summary>
+            <div class="toolbar" style="margin-top:10px;">
+              <button type="button" class="btn sm" id="btnCopyExample">复制全文</button>
+            </div>
+            <pre id="envExamplePre" class="muted" style="margin:8px 0 0;padding:12px;background:rgba(0,0,0,.04);border-radius:8px;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-all;max-height:360px;overflow:auto;"></pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="tab-pane-server" role="tabpanel" aria-labelledby="tabBtnServer" tabindex="0">
+        <div id="serverMetricsCard">
+          <div class="head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <h3 style="margin:0;">服务器状态</h3>
+            <div class="toolbar" style="margin:0;">
+              <button type="button" class="btn sm" id="btnServerMetricsRefresh">刷新</button>
+            </div>
+          </div>
+          <p id="serverMetricsHint" class="muted" style="font-size:12px;margin:8px 0;">当前进程所在主机资源概览。</p>
+          <div id="serverMetricsAlerts"></div>
+          <div id="serverMetricsBody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/datepicker.min.js"></script>
+  <script src="js/datepicker.zh-CN.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/form-enhance.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/lab-import-export.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    let page = 1, pageSize = 30, current = null, serverMetricsTimer = null;
+    (async () => {
+      await LabLayout.ensureLogin();
+      LabLayout.render("sys_configs", "系统配置");
+      document.getElementById("btnSearch").onclick = () => { page = 1; load(); };
+      document.getElementById("btnAdd").onclick = () => openModal(null);
+      document.getElementById("btnSave").onclick = save;
+      document.getElementById("btnBack").onclick = () => switchView("list");
+      if (LabAPI.isAdmin()) {
+        document.getElementById("liTabEnv").classList.remove("d-none");
+        document.getElementById("liTabServer").classList.remove("d-none");
+        document.getElementById("btnEnvSave").onclick = saveEnv;
+        document.getElementById("btnEnvExport").onclick = exportEnv;
+        document.getElementById("btnEnvImportPick").onclick = () => document.getElementById("envImportFile").click();
+        document.getElementById("envImportFile").onchange = importEnvFile;
+        document.getElementById("btnCopyExample").onclick = copyExampleEnv;
+        document.getElementById("btnBackupEmailDebug").onclick = runBackupEmailDebug;
+        document.getElementById("btnServerMetricsRefresh").onclick = () => loadServerMetrics();
+        loadEnv();
+        loadServerMetrics();
+        startServerMetricsPoll();
+        document.querySelectorAll("#sysConfigMainTabs [data-bs-toggle='tab']").forEach(btn => {
+          btn.addEventListener("shown.bs.tab", ev => {
+            const sel = ev.target && ev.target.getAttribute("data-bs-target");
+            if (sel === "#tab-pane-server") loadServerMetrics();
+            if (sel === "#tab-pane-env") loadEnv();
+          });
+        });
+      }
+      LabImportExport.attachAdminToolbar(document.querySelector("#viewList .toolbar"), {
+        title: "系统配置 CSV 导入 / 导出",
+        hintHtml: "<p class=\"muted\" style=\"margin:0 0 12px;font-size:13px;line-height:1.55\">UTF-8 CSV，表头：<code>category,code,value,status,version</code>。按 <code>category+code</code> upsert。</p>",
+        exportFilename: "sys_configs_export.csv",
+        getExportUrl: () => "/api/sys-configs/csv/export?token=" + encodeURIComponent(LabAPI.getToken() || ""),
+        importUrl: "/api/sys-configs/csv/import",
+        onImported: load,
+      });
+      load();
+    })();
+    function switchView(v) {
+      document.getElementById("viewList").style.display = v === "list" ? "" : "none";
+      document.getElementById("viewDetail").style.display = v === "detail" ? "" : "none";
+      const tabs = document.getElementById("sysConfigMainTabs");
+      if (tabs) tabs.classList.toggle("d-none", v === "detail");
+      if (v === "list" && LabAPI.isAdmin()) startServerMetricsPoll();
+      else stopServerMetricsPoll();
+    }
+    function startServerMetricsPoll() {
+      stopServerMetricsPoll();
+      serverMetricsTimer = setInterval(() => {
+        if (document.getElementById("viewList").style.display === "none") return;
+        loadServerMetrics();
+      }, 60000);
+    }
+    function stopServerMetricsPoll() {
+      if (serverMetricsTimer) {
+        clearInterval(serverMetricsTimer);
+        serverMetricsTimer = null;
+      }
+    }
+    async function loadServerMetrics() {
+      const alertsEl = document.getElementById("serverMetricsAlerts");
+      const bodyEl = document.getElementById("serverMetricsBody");
+      const hintEl = document.getElementById("serverMetricsHint");
+      const r = await LabAPI.get("/api/runtime-env/server-metrics");
+      if (!LabAPI.ok(r)) {
+        alertsEl.innerHTML = "";
+        bodyEl.innerHTML = `<p class="text-danger" style="margin:0;">${esc(LabAPI.msg(r))}</p>`;
+        return;
+      }
+      const d = r.data || {};
+      const th = d.thresholds || {};
+      if (hintEl) {
+        const dw = th.disk_warn_percent != null ? th.disk_warn_percent : 85;
+        const da = th.disk_alarm_percent != null ? th.disk_alarm_percent : 92;
+        const mw = th.memory_warn_percent != null ? th.memory_warn_percent : 90;
+        hintEl.textContent = `当前进程所在主机资源概览。磁盘 ≥${dw}% 提示、≥${da}% 严重告警；内存 ≥${mw}% 提示。`;
+      }
+      const alerts = d.alerts || [];
+      alertsEl.innerHTML = alerts.length
+        ? alerts.map(a => {
+            const cls = a.level === "error" ? "alert-danger" : "alert-warning";
+            return `<div class="alert ${cls} py-2" role="alert" style="margin-bottom:8px;font-size:14px;">${esc(a.message)}</div>`;
+          }).join("")
+        : `<p class="muted" style="margin:0 0 8px;font-size:13px;">暂无资源告警</p>`;
+      const mem = d.memory || {};
+      const loadStr = Array.isArray(d.loadavg) && d.loadavg.length
+        ? `，load（1/5/15 min）：${d.loadavg.map(x => esc(String(x))).join(" / ")}`
+        : "";
+      const disks = Array.isArray(d.disks) ? d.disks : [];
+      const daTh = th.disk_alarm_percent != null ? th.disk_alarm_percent : 92;
+      const dwTh = th.disk_warn_percent != null ? th.disk_warn_percent : 85;
+      const diskRows = disks.map(dk => {
+        const p = Number(dk.percent) || 0;
+        const trCls = p >= daTh ? "table-danger" : p >= dwTh ? "table-warning" : "";
+        return `<tr${trCls ? ` class="${trCls}"` : ""}><td><code>${esc(dk.mountpoint || "")}</code></td><td class="muted" style="font-size:12px;">${esc(dk.fstype || "")}</td><td>${esc(String(dk.used_gb))} / ${esc(String(dk.total_gb))} GB</td><td>${esc(String(dk.free_gb))} GB</td><td>${esc(String(dk.percent))}%</td></tr>`;
+      }).join("") || `<tr><td colspan="5" class="empty">无磁盘数据</td></tr>`;
+      bodyEl.innerHTML = `
+        <p class="muted" style="font-size:12px;margin:0 0 10px;line-height:1.5;">${esc(d.hostname || "")} · ${esc(d.platform || "")}${d.boot_time ? " · 启动 " + esc(d.boot_time) : ""}</p>
+        <table class="table" style="margin-bottom:12px;"><tbody>
+          <tr><th style="width:140px;vertical-align:top;">CPU</th><td>约 ${esc(String(d.cpu_percent))}%（逻辑核 ${esc(String(d.cpu_count_logical))}）${loadStr}</td></tr>
+          <tr><th style="vertical-align:top;">内存</th><td>已用 ${esc(String(mem.used_gb))} / ${esc(String(mem.total_gb))} GB（可用 ${esc(String(mem.available_gb))} GB，约 ${esc(String(mem.percent))}%）</td></tr>
+        </tbody></table>
+        <div class="head" style="margin:0 0 8px;"><h4 style="margin:0;font-size:15px;">磁盘挂载</h4></div>
+        <div style="max-height:280px;overflow:auto;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+          <table class="table" style="margin:0;">
+            <thead><tr><th>挂载点</th><th>类型</th><th>已用 / 总</th><th>可用</th><th>已用占比</th></tr></thead>
+            <tbody>${diskRows}</tbody>
+          </table>
+        </div>`;
+    }
+    async function load() {
+      const kw = document.getElementById("kw").value.trim();
+      const cat = document.getElementById("filterCategory").value.trim();
+      const r = await LabAPI.get(`/api/sys-configs?page=${page}&page_size=${pageSize}&keyword=${encodeURIComponent(kw)}&category=${encodeURIComponent(cat)}`);
+      const items = r.data.items, total = r.data.total;
+      document.getElementById("tb").innerHTML = items.map(x => `
+        <tr>
+          <td>${esc(x.category)}</td>
+          <td>${esc(x.code)}</td>
+          <td><pre style="margin:0;font-family:monospace;white-space:pre-wrap;">${esc(x.value || "")}</pre></td>
+          <td>${esc(x.version || "")}</td>
+          <td><span class="pill ${x.status === "active" ? "green" : "gray"}">${x.status}</span></td>
+          <td class="muted">${LabAPI.formatDateTime(x.updated_at || "")}</td>
+          <td class="actions">
+            <button class="btn sm" data-edit="${x.id}">编辑</button>
+            <button class="btn sm danger" data-del="${x.id}">删除</button>
+          </td>
+        </tr>`).join("") || `<tr><td colspan="7" class="empty">暂无</td></tr>`;
+      document.querySelectorAll("[data-edit]").forEach(el => el.onclick = () => openModal(items.find(x => x.id === +el.dataset.edit)));
+      document.querySelectorAll("[data-del]").forEach(el => el.onclick = () => del(+el.dataset.del));
+      const totalPage = Math.max(1, Math.ceil(total / pageSize));
+      document.getElementById("pg").innerHTML = `<button ${page<=1?"disabled":""} data-p="${page-1}">上一页</button><span>第 ${page}/${totalPage} 页（共 ${total} 条）</span><button ${page>=totalPage?"disabled":""} data-p="${page+1}">下一页</button>`;
+      document.querySelectorAll("#pg [data-p]").forEach(el => el.onclick = () => { page = +el.dataset.p; load(); });
+    }
+    function openModal(c) {
+      current = c;
+      document.getElementById("mdTitle").textContent = c ? "编辑配置" : "新增配置";
+      document.getElementById("f_category").value = c?.category || "";
+      document.getElementById("f_code").value = c?.code || "";
+      document.getElementById("f_version").value = c?.version || "";
+      document.getElementById("f_status").value = c?.status || "active";
+      document.getElementById("f_value").value = c?.value || "";
+      document.getElementById("f_category").disabled = !!c;
+      document.getElementById("f_code").disabled = !!c;
+      switchView("detail");
+    }
+    async function save() {
+      const body = {
+        category: val("f_category"), code: val("f_code"),
+        value: val("f_value"), version: val("f_version") || null,
+        status: val("f_status"),
+      };
+      const r = current ? await LabAPI.put("/api/sys-configs/" + current.id, { value: body.value, version: body.version, status: body.status }) : await LabAPI.post("/api/sys-configs", body);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast("保存成功", "success");
+      switchView("list");
+      load();
+    }
+    async function del(id) {
+      if (!confirm("删除该配置？")) return;
+      const r = await LabAPI.del("/api/sys-configs/" + id);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast("已删除", "success"); load();
+    }
+    function val(id) { return document.getElementById(id).value.trim(); }
+    function esc(s) { return String(s ?? "").replace(/[<>&"']/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c])); }
+
+    async function loadEnv() {
+      const r = await LabAPI.get("/api/runtime-env");
+      if (!LabAPI.ok(r)) {
+        document.getElementById("envHint").textContent = LabAPI.msg(r);
+        document.getElementById("envTb").innerHTML = `<tr><td colspan="4" class="empty">${esc(LabAPI.msg(r))}</td></tr>`;
+        document.getElementById("envExamplePre").textContent = "";
+        return;
+      }
+      const d = r.data || {};
+      document.getElementById("envHint").textContent = d.hint || "";
+      document.getElementById("envPath").textContent = d.path ? "文件：" + d.path : "";
+      const exText = d.full_example_env || "";
+      document.getElementById("envExamplePre").textContent = exText;
+      document.getElementById("envExampleWrap").style.display = exText.trim() ? "" : "none";
+      const items = d.items || [];
+      document.getElementById("envTb").innerHTML = items.map(it => {
+        const ro = it.readonly === true;
+        const cls = ro ? " style=\"opacity:.85\"" : "";
+        const inp = `<input type="text" class="input mono" data-env-key="${esc(it.key)}" value="${esc(it.value)}"${ro ? " readonly disabled" : ""} style="width:100%;box-sizing:border-box;" />`;
+        const desc = esc(it.description || "");
+        const exv = esc(it.example || "");
+        return `<tr${cls}><td><code>${esc(it.key)}</code>${ro ? " <span class=\"pill gray\" style=\"font-size:11px;\">只读</span>" : ""}</td><td>${inp}</td><td class="muted" style="font-size:13px;line-height:1.5;vertical-align:top;">${desc}</td><td style="vertical-align:top;"><code class="muted" style="font-size:12px;white-space:pre-wrap;word-break:break-all;">${exv}</code></td></tr>`;
+      }).join("") || `<tr><td colspan="4" class="empty">无</td></tr>`;
+    }
+    async function copyExampleEnv() {
+      const t = document.getElementById("envExamplePre").textContent || "";
+      if (!t.trim()) return LabAPI.toast("暂无示例内容", "warn");
+      try {
+        await navigator.clipboard.writeText(t);
+        LabAPI.toast("已复制到剪贴板", "success");
+      } catch (e) {
+        LabAPI.toast("复制失败，请手动选择文本复制", "error");
+      }
+    }
+    function collectEnvData() {
+      const data = {};
+      document.querySelectorAll("#envTb input[data-env-key]").forEach(el => {
+        data[el.getAttribute("data-env-key")] = el.value;
+      });
+      return data;
+    }
+    async function saveEnv() {
+      const r = await LabAPI.put("/api/runtime-env", { data: collectEnvData() });
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast(r.msg || "已保存", "success");
+      loadEnv();
+    }
+    async function exportEnv() {
+      const token = LabAPI.getToken();
+      if (!token) return LabAPI.toast("未登录", "error");
+      try {
+        const resp = await fetch("/api/runtime-env/export", { headers: { Authorization: "Bearer " + token } });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          return LabAPI.toast(LabAPI.msg(err) || "导出失败", "error");
+        }
+        const blob = await resp.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "lab_system.env";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (e) {
+        LabAPI.toast(String(e && e.message || e), "error");
+      }
+    }
+    async function importEnvFile(ev) {
+      const f = ev.target.files && ev.target.files[0];
+      ev.target.value = "";
+      if (!f) return;
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await LabAPI.post("/api/runtime-env/import", fd);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast(r.msg || "导入成功", "success");
+      loadEnv();
+    }
+    async function runBackupEmailDebug() {
+      const force = document.getElementById("chkBackupForce").checked;
+      const q = force ? "?force=true" : "";
+      const msgConfirm = force
+        ? "将忽略「关闭备份邮件」开关，立即执行数据库备份（ZIP）并通过 SMTP 发送，可能耗时较长。是否继续？"
+        : "将立即执行一次数据库备份（ZIP）并发送邮件（需已开启 BACKUP_EMAIL_ENABLED 且配置 SMTP 与收件人），可能耗时较长。是否继续？";
+      if (!confirm(msgConfirm)) return;
+      const btn = document.getElementById("btnBackupEmailDebug");
+      btn.disabled = true;
+      LabAPI.toast("正在执行 ZIP 备份并发送邮件，请稍候…", "info");
+      try {
+        const r = await LabAPI.post("/api/runtime-env/backup-email/run" + q, {}, { timeout: 3600000 });
+        if (!LabAPI.ok(r)) {
+          LabAPI.toast(LabAPI.msg(r), "error");
+          return;
+        }
+        const d = r.data || {};
+        const tail = d.file ? "（" + d.file + (d.size_mb ? "，约 " + d.size_mb + " MB" : "") + "）" : "";
+        if (d.skipped) {
+          LabAPI.toast((r.msg || "未执行") + tail, "warn");
+        } else {
+          LabAPI.toast((r.msg || "已完成") + tail, "success");
+        }
+      } catch (e) {
+        LabAPI.toast(String((e && e.message) || e), "error");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>用户管理 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div id="viewList" class="card-box">
+    <div class="toolbar toolbar-list">
+      <div class="toolbar-search-input-btn">
+        <input id="kw" placeholder="用户名" style="max-width:200px;" />
+        <button type="button" class="btn" id="btnSearch">搜索</button>
+      </div>
+      <span class="grow"></span>
+      <button class="btn primary" id="btnAdd">+ 新增用户</button>
+    </div>
+    <table class="table">
+      <thead><tr><th>ID</th><th>用户名</th><th>姓名</th><th>角色</th><th>显示时区</th><th>状态</th><th>创建时间</th><th width="320">操作</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="pagination" id="pg"></div>
+  </div>
+
+  <div id="viewDetail" style="display:none;">
+    <div class="card-box">
+      <div class="toolbar">
+        <button class="btn" id="btnBack">← 返回列表</button>
+        <span class="grow"></span>
+        <button class="btn primary" id="btnSave">保存</button>
+      </div>
+      <div class="head"><h3 id="mdTitle">新增用户</h3></div>
+      <div class="form-grid">
+        <div><label>用户名</label><input id="f_username" required minlength="3" maxlength="32" /></div>
+        <div><label>姓名</label><input id="f_real_name" required minlength="2" maxlength="32" /></div>
+        <div><label>角色</label><select id="f_role"><option value="user">普通用户</option><option value="admin">管理员</option></select></div>
+        <div><label>显示时区</label><select id="f_timezone" class="selectize-remote"></select></div>
+        <div><label id="f_pwd_label">密码</label><input id="f_password" type="password" placeholder="新建用户至少 5 位" minlength="5" /></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/datepicker.min.js"></script>
+  <script src="js/datepicker.zh-CN.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/form-enhance.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/lab-import-export.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/lab_timezones.js"></script>
+  <script>
+    let page = 1, pageSize = 20, current = null;
+    (async () => {
+      await LabLayout.ensureLogin();
+      LabLayout.render("users", "用户管理");
+      document.getElementById("btnSearch").onclick = () => { page = 1; load(); };
+      document.getElementById("btnAdd").onclick = () => openModal(null);
+      document.getElementById("btnSave").onclick = save;
+      document.getElementById("btnBack").onclick = () => switchView("list");
+      LabImportExport.attachAdminToolbar(document.querySelector("#viewList .toolbar"), {
+        title: "用户 CSV 导入 / 导出",
+        hintHtml: "<p class=\"muted\" style=\"margin:0 0 12px;font-size:13px;line-height:1.55\">UTF-8 CSV，表头：<code>username,role,disabled,real_name,timezone,password</code>。<code>password</code>：新建用户必填（至少 5 位）；已存在用户仅在填写时重置密码。<code>disabled</code>：0/1 或 true/false。</p>",
+        exportFilename: "users_export.csv",
+        getExportUrl: () => "/api/users/csv/export?token=" + encodeURIComponent(LabAPI.getToken() || ""),
+        importUrl: "/api/users/csv/import",
+        onImported: load,
+      });
+      load();
+    })();
+    function switchView(v) {
+      document.getElementById("viewList").style.display = v === "list" ? "" : "none";
+      document.getElementById("viewDetail").style.display = v === "detail" ? "" : "none";
+    }
+    async function load() {
+      const kw = document.getElementById("kw").value.trim();
+      const r = await LabAPI.get(`/api/users?page=${page}&page_size=${pageSize}&keyword=${encodeURIComponent(kw)}`);
+      const items = r.data.items, total = r.data.total;
+      document.getElementById("tb").innerHTML = items.map(u => `
+        <tr>
+          <td>${u.id}</td>
+          <td>${esc(u.username)}</td>
+          <td>${esc(u.real_name || "")}</td>
+          <td><span class="pill ${u.role === "admin" ? "blue" : "gray"}">${u.role}</span></td>
+          <td class="muted">${(() => { const t = u.timezone || "UTC"; const o = LabTimezones.utcOffsetLabel(t); return esc(t) + (o ? " <small>(" + esc(o) + ")</small>" : ""); })()}</td>
+          <td>${u.disabled ? '<span class="pill red">已禁用</span>' : '<span class="pill green">正常</span>'}</td>
+          <td class="muted">${LabAPI.formatDateTime(u.created_at || "")}</td>
+          <td class="actions">
+            <button class="btn sm" data-edit="${u.id}">编辑</button>
+            <button class="btn sm" data-reset="${u.id}">重置密码</button>
+            <button class="btn sm" data-toggle="${u.id}">${u.disabled ? "启用" : "禁用"}</button>
+            <button class="btn sm danger" data-del="${u.id}">删除</button>
+          </td>
+        </tr>`).join("") || `<tr><td colspan="8" class="empty">暂无</td></tr>`;
+      document.querySelectorAll("[data-edit]").forEach(el => el.onclick = () => openModal(items.find(x => x.id === +el.dataset.edit)));
+      document.querySelectorAll("[data-reset]").forEach(el => el.onclick = () => resetPwd(items.find(x => x.id === +el.dataset.reset)));
+      document.querySelectorAll("[data-toggle]").forEach(el => el.onclick = () => toggle(items.find(x => x.id === +el.dataset.toggle)));
+      document.querySelectorAll("[data-del]").forEach(el => el.onclick = () => del(+el.dataset.del));
+      const totalPage = Math.max(1, Math.ceil(total / pageSize));
+      document.getElementById("pg").innerHTML = `<button ${page<=1?"disabled":""} data-p="${page-1}">上一页</button><span>第 ${page}/${totalPage} 页（共 ${total} 条）</span><button ${page>=totalPage?"disabled":""} data-p="${page+1}">下一页</button>`;
+      document.querySelectorAll("#pg [data-p]").forEach(el => el.onclick = () => { page = +el.dataset.p; load(); });
+    }
+    async function openModal(u) {
+      current = u;
+      document.getElementById("mdTitle").textContent = u ? "编辑用户" : "新增用户";
+      document.getElementById("f_username").value = u?.username || "";
+      document.getElementById("f_real_name").value = u?.real_name || "";
+      document.getElementById("f_role").value = u?.role || "user";
+      await LabTimezones.setupTimezoneSelect(
+        document.getElementById("f_timezone"),
+        u?.timezone || "UTC"
+      );
+      document.getElementById("f_password").value = "";
+      document.getElementById("f_pwd_label").textContent = u ? "新密码（留空不改）" : "密码";
+      document.getElementById("f_password").required = !u;
+      switchView("detail");
+    }
+    async function save() {
+      const body = {
+        username: val("f_username"),
+        real_name: val("f_real_name"),
+        role: val("f_role"),
+        timezone: LabTimezones.getSelectValue(document.getElementById("f_timezone")) || "UTC",
+      };
+      const pwd = val("f_password");
+      if (!current) {
+        if (!body.username || pwd.length < 5) return LabAPI.toast("用户名/密码不合法", "error");
+        body.password = pwd;
+        const r = await LabAPI.post("/api/users", body);
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      } else {
+        if (pwd) body.new_password = pwd;
+        const r = await LabAPI.put("/api/users/" + current.id, body);
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      }
+      LabAPI.toast("保存成功", "success");
+      switchView("list");
+      load();
+    }
+    async function toggle(u) {
+      const r = await LabAPI.post(`/api/users/${u.id}/disabled`, { disabled: !u.disabled });
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast("已更新", "success"); load();
+    }
+    async function resetPwd(u) {
+      const pwd = prompt(`请输入用户 ${u.username} 的新密码（至少5位）`);
+      if (pwd === null) return;
+      if (!pwd || pwd.length < 5) return LabAPI.toast("新密码至少 5 位", "error");
+      const r = await LabAPI.post(`/api/users/${u.id}/reset-password`, { new_password: pwd });
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast("密码已重置", "success");
+    }
+    async function del(id) {
+      if (!confirm("确定删除？")) return;
+      const r = await LabAPI.del("/api/users/" + id);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      LabAPI.toast("已删除", "success"); load();
+    }
+    function val(id) { return document.getElementById(id).value.trim(); }
+    function esc(s) { return String(s ?? "").replace(/[<>&"']/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c])); }
+  </script>
+</body>
+</html>

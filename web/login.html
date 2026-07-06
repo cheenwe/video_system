@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登录 - 基础平台</title>
+  <link rel="icon" type="image/svg+xml" href="icon-favicon.svg" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body class="login-page">
+  <div class="login-bg-overlay"></div>
+  <button class="lang-switch" id="btnLangSwitch" type="button">EN</button>
+  <div class="login-wrap">
+    <div class="login-box">
+      <img src="logo.svg" alt="基础平台" class="login-logo" />
+      <h1 id="txtTitle">基础平台</h1>
+      <p class="sub" id="txtSub">Platform Login</p>
+      <div class="row">
+        <label id="txtUsernameLabel">用户名</label>
+        <input type="text" id="username" placeholder="请输入用户名" autocomplete="username" />
+      </div>
+      <div class="row">
+        <label id="txtPasswordLabel">密码</label>
+        <input type="password" id="password" placeholder="请输入密码" autocomplete="current-password" />
+      </div>
+      <button type="button" class="btn primary login-btn" id="btnLogin">
+        <span class="login-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
+            <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span id="btnLoginLabel">登 录</span>
+      </button>
+      <div class="err" id="err"></div>
+    </div>
+    <div class="login-copyright" id="txtCopyright">
+      Copyright © 2026 Test Laboratory . All Rights Reserved. <br/>V1.0 By <a href="https://github.com/cheenwe" target="_blank">Cheenwe</a>
+    </div>
+  </div>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/form-enhance.js"></script>
+  <script>
+    const I18N = {
+      zh: {
+        title: "基础平台",
+        sub: "Platform Login",
+        usernameLabel: "用户名",
+        usernamePlaceholder: "请输入用户名",
+        passwordLabel: "密码",
+        passwordPlaceholder: "请输入密码",
+        loginBtn: "登 录",
+        errInvalid: "请输入正确的用户名和密码",
+        copyright: "Copyright © 2026 Test Laboratory . All Rights Reserved. \nV1.0 By <a href='https://github.com/cheenwe' target='_blank'>Cheenwe</a>",
+        switchBtn: "EN"
+      },
+      en: {
+        title: "Base Platform",
+        sub: "Platform Login",
+        usernameLabel: "Username",
+        usernamePlaceholder: "Enter username",
+        passwordLabel: "Password",
+        passwordPlaceholder: "Enter password",
+        loginBtn: "Login",
+        errInvalid: "Please enter valid username and password",
+        copyright: "Copyright © 2026 Test Laboratory . All Rights Reserved. \nV1.0 By <a href='https://github.com/cheenwe' target='_blank'>Cheenwe</a>",
+        switchBtn: "中"
+      }
+    };
+    const LANG_KEY = "lab_lang";
+    let currentLang = localStorage.getItem(LANG_KEY) || "zh";
+
+    function applyLang(lang) {
+      const t = I18N[lang] || I18N.zh;
+      document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
+      document.getElementById("txtTitle").textContent = t.title;
+      document.getElementById("txtSub").textContent = t.sub;
+      document.getElementById("txtUsernameLabel").textContent = t.usernameLabel;
+      document.getElementById("txtPasswordLabel").textContent = t.passwordLabel;
+      document.getElementById("username").placeholder = t.usernamePlaceholder;
+      document.getElementById("password").placeholder = t.passwordPlaceholder;
+      document.getElementById("btnLoginLabel").textContent = t.loginBtn;
+      document.getElementById("txtCopyright").innerHTML = t.copyright.replace("\n", "<br/>");
+      document.getElementById("btnLangSwitch").textContent = t.switchBtn;
+      currentLang = lang;
+      localStorage.setItem(LANG_KEY, lang);
+    }
+
+    document.getElementById("btnLangSwitch").addEventListener("click", () => {
+      applyLang(currentLang === "zh" ? "en" : "zh");
+      document.getElementById("err").textContent = "";
+    });
+
+    document.getElementById("btnLogin").addEventListener("click", login);
+    document.getElementById("password").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+    applyLang(currentLang);
+
+    async function login() {
+      const u = document.getElementById("username").value.trim();
+      const p = document.getElementById("password").value;
+      const err = document.getElementById("err");
+      err.textContent = "";
+      if (u.length < 3 || p.length < 5) {
+        err.textContent = (I18N[currentLang] || I18N.zh).errInvalid;
+        return;
+      }
+      const r = await LabAPI.post("/api/auth/login", { username: u, password: p });
+      if (!LabAPI.ok(r)) { err.textContent = LabAPI.msg(r); return; }
+      LabAPI.setToken(r.data.token);
+      LabAPI.setUser({
+        user_id: r.data.user_id,
+        username: r.data.username,
+        is_admin: r.data.is_admin,
+        real_name: r.data.real_name,
+        timezone: r.data.timezone || "UTC",
+        avatar_url: r.data.avatar_url || null,
+      });
+      const next = new URLSearchParams(location.search).get("next");
+      location.href = next && !next.includes("://") ? next : "index";
+    }
+  </script>
+</body>
+</html>

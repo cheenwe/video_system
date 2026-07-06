@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>V视频站 - 在线视频分享与点播</title>
+  <meta name="description" content="V视频站提供公开视频推荐、分类浏览、专辑合集与高清在线播放，支持投稿分享优质视频内容。" />
+  <meta name="keywords" content="视频,在线视频,视频分享,高清视频,短视频,视频点播,视频站,公开视频,V视频站,视频推荐" />
+  <meta name="robots" content="index,follow" />
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/video-hub.css" />
+</head>
+<body>
+  <div class="hub-page">
+    <div class="hub-hero">
+      <div class="hub-hero-row">
+        <a href="index" class="hub-logo-link" id="hubLogoWrap">
+          <img class="hub-logo-img" id="hubLogoImg" alt="" style="display:none" />
+          <span class="hub-logo-text" id="hubLogoText">V视频站</span>
+        </a>
+        <div class="hub-search">
+          <input id="kw" type="search" placeholder="搜索视频标题或简介…" autocomplete="off" />
+          <button type="button" id="btnSearch">搜索</button>
+        </div>
+        <div class="hub-actions" id="hubActions"></div>
+      </div>
+    </div>
+
+    <div class="hub-tabs" id="hubTabs">
+      <button type="button" class="hub-tab active" data-mode="videos" data-vis="public">推荐</button>
+      <button type="button" class="hub-tab" data-mode="videos" data-vis="private" id="tabPrivate" style="display:none;">隐私</button>
+      <button type="button" class="hub-tab" data-mode="albums" data-vis="public">专辑</button>
+    </div>
+
+    <div id="hubCategories" class="hub-categories" style="display:none;"></div>
+    <div id="hubHint" class="muted" style="max-width:1280px;margin:0 auto 12px;font-size:13px;"></div>
+    <div id="videoGrid" class="hub-grid"></div>
+    <div class="hub-pager" id="pg"></div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/site-branding.js"></script>
+  <script src="js/video-hub.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    let page = 1;
+    let mode = "videos";
+    let visibility = "public";
+    let categoryId = "";
+    const pageSize = 24;
+    let hubConfig = { allow_anonymous_play: true };
+    let categories = [];
+
+    function readQuery() {
+      const p = new URLSearchParams(location.search);
+      const q = p.get("q") || p.get("keyword") || "";
+      if (q) document.getElementById("kw").value = q;
+      if (p.get("mode") === "albums") mode = "albums";
+      const vis = p.get("vis");
+      if (vis === "private" && VideoHub.isLoggedIn()) visibility = "private";
+      if (p.get("cat")) categoryId = p.get("cat");
+    }
+
+    function syncQuery() {
+      const kw = document.getElementById("kw").value.trim();
+      const params = new URLSearchParams();
+      if (kw) params.set("q", kw);
+      if (mode === "albums") params.set("mode", "albums");
+      if (visibility === "private") params.set("vis", "private");
+      if (categoryId && mode === "videos") params.set("cat", categoryId);
+      const qs = params.toString();
+      history.replaceState(null, "", qs ? "?" + qs : location.pathname);
+    }
+
+    function renderActions() {
+      VideoHub.renderHubActions("hubActions");
+    }
+
+    function updateTabs() {
+      const priv = document.getElementById("tabPrivate");
+      if (VideoHub.isLoggedIn()) priv.style.display = "";
+      else {
+        priv.style.display = "none";
+        if (visibility === "private") visibility = "public";
+      }
+      document.getElementById("hubCategories").style.display = mode === "videos" ? "" : "none";
+      const hint = document.getElementById("hubHint");
+      if (mode === "albums") {
+        hint.textContent = visibility === "private"
+          ? "隐私专辑仅登录用户可见。"
+          : "公开专辑合集，点击进入查看分集。";
+        return;
+      }
+      if (visibility === "public") {
+        hint.textContent = hubConfig.allow_anonymous_play
+          ? "当前为公开视频，游客可直接播放。"
+          : "公开视频需登录后播放（站点配置已关闭游客播放）。";
+      } else {
+        hint.textContent = "隐私视频仅登录用户可见与播放。";
+      }
+    }
+
+    async function loadContent() {
+      syncQuery();
+      updateTabs();
+      const kw = document.getElementById("kw").value.trim();
+      if (mode === "albums") return loadAlbums(kw);
+      return loadVideos(kw);
+    }
+
+    async function loadVideos(kw) {
+      if (visibility === "private" && !VideoHub.isLoggedIn()) {
+        LabAPI.toast("查看隐私视频请先登录", "warn");
+        visibility = "public";
+        updateTabs();
+      }
+      let url = `/api/videos?page=${page}&page_size=${pageSize}&visibility=${encodeURIComponent(visibility)}`;
+      if (kw) url += "&keyword=" + encodeURIComponent(kw);
+      if (categoryId) url += "&category_id=" + encodeURIComponent(categoryId);
+      const r = await LabAPI.get(url);
+      if (!LabAPI.ok(r)) {
+        LabAPI.toast(LabAPI.msg(r), "error");
+        document.getElementById("videoGrid").innerHTML = '<div class="hub-empty">加载失败</div>';
+        return;
+      }
+      hubConfig.allow_anonymous_play = r.data.allow_anonymous_play !== false;
+      const items = r.data.items || [];
+      if (!items.length) {
+        document.getElementById("videoGrid").innerHTML =
+          '<div class="hub-empty">' + (kw || categoryId ? "未找到相关视频" : "暂无视频，登录后可投稿") + "</div>";
+        document.getElementById("pg").innerHTML = "";
+        return;
+      }
+      document.getElementById("videoGrid").innerHTML = items.map((v) => VideoHub.renderCard(v)).join("");
+      renderPager(r.data.total || 0);
+    }
+
+    async function loadAlbums(kw) {
+      if (visibility === "private" && !VideoHub.isLoggedIn()) {
+        LabAPI.toast("查看隐私专辑请先登录", "warn");
+        visibility = "public";
+      }
+      let url = `/api/video-albums?page=${page}&page_size=${pageSize}&visibility=${encodeURIComponent(visibility)}`;
+      if (kw) url += "&keyword=" + encodeURIComponent(kw);
+      const r = await LabAPI.get(url);
+      if (!LabAPI.ok(r)) {
+        LabAPI.toast(LabAPI.msg(r), "error");
+        document.getElementById("videoGrid").innerHTML = '<div class="hub-empty">加载失败</div>';
+        return;
+      }
+      const items = r.data.items || [];
+      if (!items.length) {
+        document.getElementById("videoGrid").innerHTML =
+          '<div class="hub-empty">' + (kw ? "未找到相关专辑" : "暂无专辑，登录后可在后台创建") + "</div>";
+        document.getElementById("pg").innerHTML = "";
+        return;
+      }
+      document.getElementById("videoGrid").innerHTML = items.map((a) => VideoHub.renderAlbumCard(a)).join("");
+      renderPager(r.data.total || 0);
+    }
+
+    function renderPager(total) {
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      document.getElementById("pg").innerHTML =
+        '<button class="btn sm" ' + (page <= 1 ? "disabled" : "") + ' id="pgPrev">上一页</button>' +
+        '<span class="muted">' + page + " / " + pages + "</span>" +
+        '<button class="btn sm" ' + (page >= pages ? "disabled" : "") + ' id="pgNext">下一页</button>';
+      document.getElementById("pgPrev")?.addEventListener("click", () => { if (page > 1) { page--; loadContent(); } });
+      document.getElementById("pgNext")?.addEventListener("click", () => { if (page < pages) { page++; loadContent(); } });
+    }
+
+    function bindCategories() {
+      VideoHub.renderCategoryBar(categories, categoryId, "hubCategories");
+      document.getElementById("hubCategories").addEventListener("click", (e) => {
+        const btn = e.target.closest(".hub-cat");
+        if (!btn) return;
+        categoryId = btn.dataset.id || "";
+        page = 1;
+        loadContent();
+        VideoHub.renderCategoryBar(categories, categoryId, "hubCategories");
+      });
+    }
+
+    (async () => {
+      await LabLayout.ensureLogin(false);
+      LabLayout.initHubPage();
+      await SiteBranding.init();
+      hubConfig = await VideoHub.loadHubConfig();
+      categories = await VideoHub.loadCategories();
+      readQuery();
+      renderActions();
+      bindCategories();
+      document.querySelectorAll(".hub-tab").forEach((btn) => {
+        btn.classList.toggle("active", (btn.dataset.mode || "videos") === mode && (btn.dataset.vis || "public") === visibility);
+        btn.addEventListener("click", () => {
+          if (btn.dataset.vis === "private" && !VideoHub.isLoggedIn()) {
+            LabAPI.toast("请先登录", "warn");
+            location.href = "login?next=" + encodeURIComponent("index?vis=private");
+            return;
+          }
+          document.querySelectorAll(".hub-tab").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          mode = btn.dataset.mode || "videos";
+          visibility = btn.dataset.vis || "public";
+          page = 1;
+          loadContent();
+        });
+      });
+      document.getElementById("btnSearch").addEventListener("click", () => { page = 1; loadContent(); });
+      document.getElementById("kw").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { page = 1; loadContent(); }
+      });
+      updateTabs();
+      loadContent();
+    })();
+  </script>
+</body>
+</html>

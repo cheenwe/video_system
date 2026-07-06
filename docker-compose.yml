@@ -1,0 +1,163 @@
+# lab_system - Docker Compose
+#
+# 开发 / 单机：
+#   cp .env.example .env
+#   docker compose --profile sqlite up -d --build
+#   docker compose --profile mysql  up -d --build
+#
+# 生产（应用 + Nginx 反代，需先准备 deploy/nginx.conf 与 SSL）：
+#   docker compose --profile prod --profile mysql up -d --build
+#
+# 环境变量：PORT 映射宿主机端口；容器内应用始终读 PORT（默认 8808）
+
+x-app-common: &app-common
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment: &app-env
+    HOST: 0.0.0.0
+    PORT: ${APP_PORT:-8808}
+    UPLOAD_ROOT: /app/uploads
+    DEBUG: ${DEBUG:-false}
+    WAIT_FOR_DB: ${WAIT_FOR_DB:-true}
+    WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+    REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    WAIT_FOR_REDIS: ${WAIT_FOR_REDIS:-true}
+  volumes:
+    - ./uploads:/app/uploads
+    - ./data:/app/data
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$${PORT:-8808}/api/health || exit 1"]
+    interval: 15s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: lab_system_redis
+    profiles: ["sqlite", "mysql", "prod"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "${REDIS_PUBLISH_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  app-sqlite:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: Dockerfile.slim
+      args:
+        APT_MIRROR: ${APT_MIRROR:-huawei}
+    image: ${LAB_SYSTEM_IMAGE:-lab_system:local-slim}
+    container_name: lab_system_sqlite
+    profiles: ["sqlite"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${PORT:-8808}:${APP_PORT:-8808}"
+    environment:
+      <<: *app-env
+      DATABASE_URL: sqlite:///./data/lab_system.db
+
+  mysql:
+    image: mysql:8.0
+    container_name: lab_system_mysql
+    profiles: ["mysql", "prod"]
+    restart: unless-stopped
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-lab_system}
+      MYSQL_USER: ${MYSQL_USER:-lab_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-lab_pass}
+      TZ: Asia/Shanghai
+    ports:
+      - "${MYSQL_PUBLISH_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 25s
+
+  app-mysql:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-huawei}
+    image: ${LAB_SYSTEM_IMAGE:-lab_system:local}
+    container_name: lab_system_app
+    profiles: ["mysql"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${PORT:-8808}:${APP_PORT:-8808}"
+    environment:
+      <<: *app-env
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-lab_user}:${MYSQL_PASSWORD:-lab_pass}@mysql:3306/${MYSQL_DATABASE:-lab_system}?charset=utf8mb4
+
+  app-prod:
+    <<: *app-common
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-huawei}
+    image: ${LAB_SYSTEM_IMAGE:-lab_system:local}
+    container_name: lab_system_app_prod
+    profiles: ["prod"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "${APP_PORT:-8808}"
+    environment:
+      <<: *app-env
+      DEBUG: "false"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-lab_user}:${MYSQL_PASSWORD:-lab_pass}@mysql:3306/${MYSQL_DATABASE:-lab_system}?charset=utf8mb4
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: lab_system_nginx
+    profiles: ["prod"]
+    restart: unless-stopped
+    depends_on:
+      app-prod:
+        condition: service_healthy
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+    volumes:
+      - ./deploy/nginx.docker.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  mysql_data:
+  redis_data:

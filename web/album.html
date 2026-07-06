@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>专辑 - V视频站</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/video-hub.css" />
+</head>
+<body>
+  <div class="hub-page">
+    <div class="hub-hero">
+      <div class="hub-hero-row">
+        <a href="index" class="hub-logo-link" id="hubLogoWrap">
+          <img class="hub-logo-img" id="hubLogoImg" alt="" style="display:none" />
+          <span class="hub-logo-text" id="hubLogoText">V视频站</span>
+        </a>
+        <div class="hub-actions" id="hubActions"></div>
+      </div>
+    </div>
+    <div style="max-width:1280px;margin:0 auto 16px;">
+      <h1 class="play-title" id="albumTitle"></h1>
+      <div class="play-stats" id="albumMeta"></div>
+      <div class="play-desc" id="albumDesc"></div>
+    </div>
+    <div id="videoGrid" class="hub-grid"></div>
+  </div>
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/site-branding.js"></script>
+  <script src="js/video-hub.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    (async () => {
+      await LabLayout.ensureLogin(false);
+      LabLayout.initHubPage();
+      await SiteBranding.init();
+      VideoHub.renderHubActions("hubActions");
+      const id = new URLSearchParams(location.search).get("id");
+      if (!id) {
+        document.getElementById("videoGrid").innerHTML = '<div class="hub-empty">缺少专辑 ID</div>';
+        return;
+      }
+      const r = await LabAPI.get("/api/video-albums/" + id);
+      if (!LabAPI.ok(r)) {
+        document.getElementById("videoGrid").innerHTML =
+          '<div class="hub-empty">' + LabAPI.msg(r) + '</div>';
+        return;
+      }
+      const a = r.data;
+      const siteName = SiteBranding.getBranding().site_name || "V视频站";
+      SiteBranding.applySeo({
+        title: (a.title || "专辑") + " - " + siteName,
+        description: (a.description || a.title || "").slice(0, 500),
+        url: location.pathname + location.search,
+        canonical: "/album?id=" + id,
+        ogType: "website",
+      });
+      document.getElementById("albumTitle").textContent = a.title || "";
+      document.getElementById("albumMeta").textContent =
+        (a.video_count || 0) + "个视频 · " +
+        (a.visibility === "private" ? "隐私" : "公开") + " · " +
+        (a.uploader_name || "UP主");
+      document.getElementById("albumDesc").textContent = a.description || "（暂无简介）";
+      const videos = a.videos || [];
+      if (!videos.length) {
+        document.getElementById("videoGrid").innerHTML = '<div class="hub-empty">专辑内暂无视频</div>';
+        return;
+      }
+      document.getElementById("videoGrid").innerHTML = videos.map((v) => VideoHub.renderCard(v, id)).join("");
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>视频专辑 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="card-box">
+    <div class="head"><h3>视频专辑</h3></div>
+    <p class="muted" style="font-size:13px;margin:0 0 12px;">创建专辑并将视频加入其中；上传时可直接选专辑，或在下方管理分集。</p>
+    <div class="toolbar toolbar-list">
+      <input id="kw" placeholder="搜索专辑" style="max-width:200px;" />
+      <button class="btn" id="btnSearch">搜索</button>
+      <span class="grow"></span>
+      <button class="btn primary" id="btnAdd">+ 新建专辑</button>
+    </div>
+    <table class="table">
+      <thead><tr><th>标题</th><th>可见性</th><th>视频数</th><th>创建时间</th><th width="220">操作</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="pagination" id="pg"></div>
+  </div>
+
+  <div class="modal-mask" id="mdAlbum" style="display:none;">
+    <div class="modal-box" style="max-width:520px;">
+      <div class="head"><h3 id="mdAlbumTitle">新建专辑</h3></div>
+      <div class="form-grid">
+        <div class="full"><label>标题</label><input id="fTitle" /></div>
+        <div class="full"><label>简介</label><textarea id="fDesc" rows="3"></textarea></div>
+        <div><label>可见性</label><select id="fVis"><option value="public">公开</option><option value="private">隐私</option></select></div>
+        <div><label>排序</label><input id="fSort" type="number" value="0" /></div>
+      </div>
+      <div style="margin-top:16px;text-align:right;">
+        <button class="btn" id="btnAlbumCancel">取消</button>
+        <button class="btn primary" id="btnAlbumSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="mdVideos" style="display:none;">
+    <div class="modal-box" style="max-width:560px;">
+      <div class="head"><h3 id="mdVideosTitle">管理分集</h3></div>
+      <div class="form-grid">
+        <div class="full"><label>添加视频（输入视频 ID）</label>
+          <div style="display:flex;gap:8px;"><input id="fVideoId" type="number" placeholder="视频 ID" /><button class="btn primary" id="btnAddVideo">加入</button></div>
+        </div>
+      </div>
+      <ul id="videoList" style="margin:12px 0 0;padding-left:18px;"></ul>
+      <div style="margin-top:16px;text-align:right;">
+        <button class="btn" id="btnVideosClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    let page = 1;
+    let editId = null;
+    let manageAlbumId = null;
+
+    async function loadList() {
+      const kw = document.getElementById("kw").value.trim();
+      let url = "/api/video-albums?visibility=mine&page=" + page + "&page_size=20";
+      if (kw) url += "&keyword=" + encodeURIComponent(kw);
+      const r = await LabAPI.get(url);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      document.getElementById("tb").innerHTML = (r.data.items || []).map((a) =>
+        "<tr><td>" + a.title + "</td><td>" + (a.visibility === "private" ? "隐私" : "公开") +
+        "</td><td>" + (a.video_count || 0) + "</td><td>" + (a.created_at || "-") +
+        '</td><td><a class="btn sm" href="album?id=' + a.id + '" target="_blank">预览</a> ' +
+        '<button class="btn sm" data-videos="' + a.id + '">分集</button> ' +
+        '<button class="btn sm" data-edit="' + a.id + '">编辑</button> ' +
+        '<button class="btn sm danger" data-del="' + a.id + '">删除</button></td></tr>'
+      ).join("") || '<tr><td colspan="5" class="muted">暂无专辑，请先新建</td></tr>';
+    }
+
+    async function openVideosModal(albumId) {
+      manageAlbumId = albumId;
+      const r = await LabAPI.get("/api/video-albums/" + albumId);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      document.getElementById("mdVideosTitle").textContent = "分集 · " + r.data.title;
+      const videos = r.data.videos || [];
+      document.getElementById("videoList").innerHTML = videos.map((v) =>
+        '<li style="margin:6px 0;">#' + v.id + ' ' + v.title +
+        ' <button class="btn sm danger" data-rm="' + v.id + '">移出</button></li>'
+      ).join("") || '<li class="muted">暂无视频</li>';
+      document.getElementById("mdVideos").style.display = "flex";
+    }
+
+    (async () => {
+      await LabLayout.ensureLogin();
+      LabLayout.render("video_albums", "视频专辑");
+      await loadList();
+      document.getElementById("btnSearch").onclick = () => { page = 1; loadList(); };
+      document.getElementById("btnAdd").onclick = () => {
+        editId = null;
+        document.getElementById("mdAlbumTitle").textContent = "新建专辑";
+        document.getElementById("fTitle").value = "";
+        document.getElementById("fDesc").value = "";
+        document.getElementById("fVis").value = "public";
+        document.getElementById("fSort").value = "0";
+        document.getElementById("mdAlbum").style.display = "flex";
+      };
+      document.getElementById("btnAlbumCancel").onclick = () => { document.getElementById("mdAlbum").style.display = "none"; };
+      document.getElementById("btnVideosClose").onclick = () => { document.getElementById("mdVideos").style.display = "none"; };
+      document.getElementById("btnAlbumSave").onclick = async () => {
+        const body = {
+          title: document.getElementById("fTitle").value.trim(),
+          description: document.getElementById("fDesc").value.trim(),
+          visibility: document.getElementById("fVis").value,
+          sort_order: Number(document.getElementById("fSort").value) || 0,
+        };
+        const r = editId
+          ? await LabAPI.put("/api/video-albums/" + editId, body)
+          : await LabAPI.post("/api/video-albums", body);
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+        document.getElementById("mdAlbum").style.display = "none";
+        LabAPI.toast("已保存", "success");
+        loadList();
+      };
+      document.getElementById("btnAddVideo").onclick = async () => {
+        const vid = Number(document.getElementById("fVideoId").value);
+        if (!vid) return LabAPI.toast("请输入视频 ID", "warn");
+        const r = await LabAPI.post("/api/video-albums/" + manageAlbumId + "/videos", { video_id: vid, sort_order: 0 });
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+        LabAPI.toast("已加入", "success");
+        openVideosModal(manageAlbumId);
+      };
+      document.getElementById("videoList").addEventListener("click", async (e) => {
+        const rm = e.target.closest("[data-rm]");
+        if (!rm) return;
+        const r = await LabAPI.del("/api/video-albums/" + manageAlbumId + "/videos/" + rm.dataset.rm);
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+        openVideosModal(manageAlbumId);
+      });
+      document.getElementById("tb").addEventListener("click", async (e) => {
+        const edit = e.target.closest("[data-edit]");
+        const del = e.target.closest("[data-del]");
+        const videos = e.target.closest("[data-videos]");
+        if (videos) return openVideosModal(videos.dataset.videos);
+        if (edit) {
+          const id = edit.dataset.edit;
+          const r = await LabAPI.get("/api/video-albums/" + id);
+          if (!LabAPI.ok(r)) return;
+          editId = id;
+          document.getElementById("mdAlbumTitle").textContent = "编辑专辑";
+          document.getElementById("fTitle").value = r.data.title || "";
+          document.getElementById("fDesc").value = r.data.description || "";
+          document.getElementById("fVis").value = r.data.visibility || "public";
+          document.getElementById("fSort").value = r.data.sort_order || 0;
+          document.getElementById("mdAlbum").style.display = "flex";
+        }
+        if (del && confirm("确定删除该专辑？")) {
+          const r = await LabAPI.del("/api/video-albums/" + del.dataset.del);
+          if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+          LabAPI.toast("已删除", "success");
+          loadList();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

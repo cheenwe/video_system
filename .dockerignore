@@ -1,0 +1,32 @@
+# 本地环境与密钥
+.env
+.env.local
+.venv/
+venv/
+env/
+
+# 运行时数据（应通过卷挂载持久化）
+data/
+uploads/
+
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+*.so
+
+# IDE 与系统
+.idea/
+.vscode/
+.DS_Store
+
+# 文档与开发用（可选保留 README 则删除下一行）
+# README.md
+# LICENSE

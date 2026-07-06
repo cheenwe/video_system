@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>视频管理 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="card-box">
+    <div class="head"><h3>视频管理</h3></div>
+    <p class="muted" style="font-size:13px;margin:0 0 12px;">管理已发布视频：修改标题/简介/分类/可见性、更换封面、替换视频文件或删除。</p>
+    <div class="toolbar toolbar-list">
+      <input id="kw" placeholder="搜索标题或简介" style="max-width:220px;" />
+      <select id="fScope" style="max-width:140px;">
+        <option value="mine">我的视频</option>
+        <option value="all">全部视频</option>
+      </select>
+      <button class="btn" id="btnSearch">搜索</button>
+      <span class="grow"></span>
+      <a class="btn primary" href="video_upload">+ 上传新视频</a>
+    </div>
+    <table class="table vm-table">
+      <thead>
+        <tr>
+          <th width="72">封面</th>
+          <th width="56">ID</th>
+          <th>标题</th>
+          <th>分类</th>
+          <th>可见性</th>
+          <th>播放量</th>
+          <th>文件</th>
+          <th>创建时间</th>
+          <th width="200">操作</th>
+        </tr>
+      </thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div class="pagination vm-pagination" id="pg"></div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    let page = 1;
+    let total = 0;
+    const pageSize = 15;
+
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    function formatSize(n) {
+      n = Number(n) || 0;
+      if (n >= 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
+      if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+      if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+      return n + " B";
+    }
+
+    function coverSrc(url, ref) {
+      if (!url) return "";
+      const base = url.split("?")[0];
+      const params = [];
+      const rest = url.indexOf("?") >= 0 ? url.split("?")[1] : "";
+      if (rest) {
+        rest.split("&").forEach((pair) => {
+          const idx = pair.indexOf("=");
+          if (idx <= 0) return;
+          const k = decodeURIComponent(pair.slice(0, idx));
+          const val = decodeURIComponent(pair.slice(idx + 1));
+          if (k === "v" && /^\d+$/.test(val)) return;
+          params.push(encodeURIComponent(k) + "=" + encodeURIComponent(val));
+        });
+      }
+      const t = LabAPI.getToken();
+      if (t) params.push("token=" + encodeURIComponent(t));
+      if (ref) params.push("v=" + encodeURIComponent(ref));
+      if (!params.length) return base;
+      return base + "?" + params.join("&");
+    }
+
+    function renderPagination() {
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      const el = document.getElementById("pg");
+      if (!el) return;
+      if (total <= pageSize) {
+        el.innerHTML = total ? '<span class="muted">共 ' + total + " 条</span>" : "";
+        return;
+      }
+      el.innerHTML =
+        '<button class="btn sm" id="pgPrev"' + (page <= 1 ? " disabled" : "") + ">上一页</button>" +
+        '<span class="muted" style="margin:0 12px;">第 ' + page + " / " + pages + " 页 · 共 " + total + " 条</span>" +
+        '<button class="btn sm" id="pgNext"' + (page >= pages ? " disabled" : "") + ">下一页</button>";
+      document.getElementById("pgPrev")?.addEventListener("click", () => { if (page > 1) { page--; loadList(); } });
+      document.getElementById("pgNext")?.addEventListener("click", () => { if (page < pages) { page++; loadList(); } });
+    }
+
+    async function loadList() {
+      const kw = document.getElementById("kw").value.trim();
+      const scope = document.getElementById("fScope").value;
+      let url = "/api/videos?visibility=" + encodeURIComponent(scope) + "&page=" + page + "&page_size=" + pageSize;
+      if (kw) url += "&keyword=" + encodeURIComponent(kw);
+      const r = await LabAPI.get(url);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      total = r.data.total || 0;
+      const items = r.data.items || [];
+      document.getElementById("tb").innerHTML = items.map((v) => {
+        const thumb = v.cover_url
+          ? '<img class="vm-cover-thumb" src="' + esc(coverSrc(v.cover_url, v.ref)) + '" alt="" />'
+          : '<span class="vm-cover-empty">无</span>';
+        return (
+          "<tr>" +
+          "<td>" + thumb + "</td>" +
+          "<td>#" + v.id + "</td>" +
+          '<td><strong>' + esc(v.title) + "</strong></td>" +
+          "<td>" + esc(v.category_name || "—") + "</td>" +
+          "<td>" + (v.visibility === "private" ? "隐私" : "公开") + "</td>" +
+          "<td>" + (v.view_count || 0) + "</td>" +
+          "<td>" + formatSize(v.file_size) + "</td>" +
+          "<td>" + esc(v.created_at || "—") + "</td>" +
+          '<td><a class="btn sm" href="' + (v.ref ? ('video?v=' + encodeURIComponent(v.ref)) : ('video?id=' + v.id)) + '" target="_blank">预览</a> ' +
+          (v.can_manage
+            ? '<a class="btn sm" href="video_edit?id=' + v.id + '">编辑</a> ' +
+              '<button class="btn sm danger" data-del="' + v.id + '">删除</button>'
+            : '<span class="muted" style="font-size:12px;">—</span>') +
+          "</td></tr>"
+        );
+      }).join("") || '<tr><td colspan="9" class="muted">暂无视频</td></tr>';
+      renderPagination();
+    }
+
+    (async () => {
+      await LabLayout.ensureLogin();
+      const me = LabAPI.getUser() || {};
+      if (!me.is_admin) {
+        document.getElementById("fScope").innerHTML = '<option value="mine">我的视频</option>';
+      }
+      LabLayout.render("video_system", "视频管理");
+      await loadList();
+
+      document.getElementById("btnSearch").onclick = () => { page = 1; loadList(); };
+      document.getElementById("fScope").onchange = () => { page = 1; loadList(); };
+
+      document.getElementById("tb").addEventListener("click", async (e) => {
+        const del = e.target.closest("[data-del]");
+        if (!del) return;
+        if (!confirm("确定删除该视频？文件与封面将一并删除。")) return;
+        const r = await LabAPI.del("/api/videos/" + del.dataset.del);
+        if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+        LabAPI.toast("已删除", "success");
+        loadList();
+      });
+    })();
+  </script>
+</body>
+</html>

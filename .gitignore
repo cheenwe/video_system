@@ -1,0 +1,18 @@
+# 环境配置（含密钥，勿提交）
+.env
+
+# 数据库与上传目录（按需忽略）
+data/
+uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env.local
+.DS_Store
+.cur*
+.pytest*
+*.sh

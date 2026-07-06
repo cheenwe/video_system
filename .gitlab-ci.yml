@@ -1,0 +1,178 @@
+# GitLab CI：测试 + 多平台打包 + Docker 双镜像
+# - Linux：默认 SaaS Runner 构建 dist/lab_system_server
+# - Windows / macOS：需对应 Runner（见各 Job tags）
+# - Docker：推送标准镜像（Dockerfile）与轻量镜像（Dockerfile.slim）
+#   入口 scripts/docker-entrypoint.sh：等待 DB → 迁移 → init → uvicorn
+#
+# 打 Tag 发布时 Windows/macOS Job 会自动跑；分支上也可在 Pipeline 里手动点击运行。
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+stages:
+  - test
+  - build
+  - docker
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+default:
+  interruptible: true
+  cache:
+    key: "pip-${CI_JOB_NAME}"
+    paths:
+      - .cache/pip
+
+.test_python_image: &test_python_image
+  image: python:3.12-bookworm
+
+# ---------- 测试 ----------
+test:
+  <<: *test_python_image
+  stage: test
+  script:
+    - python -m pip install -r requirements.txt
+    - python -m compileall -q src
+    - python -m pytest src/tests -q
+
+# ---------- Linux 可执行文件（glibc，如 Debian/Ubuntu）----------
+build_linux:
+  <<: *test_python_image
+  stage: build
+  needs: [test]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends binutils || true
+  script:
+    - bash scripts/build_onefile_ci_unix.sh
+  artifacts:
+    name: "${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-linux-amd64"
+    paths:
+      - dist/lab_system_server
+    expire_in: 30 days
+
+# ---------- Windows .exe（需 Windows Runner）----------
+build_windows:
+  stage: build
+  needs: [test]
+  tags:
+    - saas-windows-medium-amd64
+  before_script:
+    - python -m pip install --upgrade pip
+    - python -m pip install -r requirements.txt pyinstaller
+  script:
+    - powershell -ExecutionPolicy Bypass -File scripts/build_windows_exe.ps1
+  artifacts:
+    name: "${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-windows-amd64"
+    paths:
+      - dist/lab_system_server.exe
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - when: manual
+
+# ---------- macOS 可执行文件（需 macOS Runner，与构建机架构一致）----------
+build_macos:
+  stage: build
+  needs: [test]
+  tags:
+    - saas-macos-medium-m1
+  before_script:
+    - python3 -m pip install --upgrade pip
+    - python3 -m pip install -r requirements.txt pyinstaller
+  script:
+    - export PYTHON_BIN=python3
+    - bash scripts/build_onefile_ci_unix.sh
+  artifacts:
+    name: "${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}-macos"
+    paths:
+      - dist/lab_system_server
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG
+    - when: manual
+
+# ---------- Docker：标准镜像 + 轻量镜像（推送到 GitLab Container Registry）----------
+#
+# DinD 失败常见原因（日志里 mount: permission denied / health check timeout）：
+# 1) 须在 Runner 的 config.toml 中 [runners.docker] privileged = true（部分 GitLab 实例不接受作业里的 privileged 关键字）。
+#    无法开特权时请用下方 docker_images_kaniko。
+# 2) 服务容器需单独关闭 TLS（与 job 变量一致），见 services.variables。
+# 3) 服务健康检查超时：在 [runners.docker] 中增大 wait_for_services_timeout（秒）。
+#
+.docker_dind: &docker_dind
+  image: docker:24-cli
+  services:
+    - name: docker:24-dind
+      alias: docker
+      variables:
+        DOCKER_TLS_CERTDIR: ""
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+
+docker_images:
+  <<: *docker_dind
+  stage: docker
+  needs: [test]
+  rules:
+    - if: $DOCKER_USE_KANIKO == "true"
+      when: never
+    - when: on_success
+  before_script:
+    - |
+      for i in $(seq 1 30); do
+        if docker info >/dev/null 2>&1; then break; fi
+        echo "Waiting for Docker daemon... ($i/30)"
+        sleep 2
+      done
+    - docker info
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - |
+      set -e
+      IMG="$CI_REGISTRY_IMAGE"
+      SHA_TAG="$IMG:$CI_COMMIT_SHORT_SHA"
+      SLIM_TAG="$IMG:$CI_COMMIT_SHORT_SHA-slim"
+      docker build -f Dockerfile -t "$SHA_TAG" .
+      docker build -f Dockerfile.slim -t "$SLIM_TAG" .
+      docker push "$SHA_TAG"
+      docker push "$SLIM_TAG"
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        docker tag "$SHA_TAG" "$IMG:latest"
+        docker tag "$SLIM_TAG" "$IMG:slim"
+        docker push "$IMG:latest"
+        docker push "$IMG:slim"
+      fi
+
+# 无 Docker daemon、Runner 禁止 privileged 时使用（手动运行或设置 DOCKER_USE_KANIKO=true）
+docker_images_kaniko:
+  stage: docker
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  needs: [test]
+  rules:
+    - if: $DOCKER_USE_KANIKO == "true"
+    - when: manual
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - |
+      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" \
+        > /kaniko/.docker/config.json
+  script:
+    - |
+      set -e
+      IMG="$CI_REGISTRY_IMAGE"
+      SHA="$CI_COMMIT_SHORT_SHA"
+      MAIN_DST="--destination $IMG:$SHA"
+      SLIM_DST="--destination $IMG:$SHA-slim"
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        MAIN_DST="$MAIN_DST --destination $IMG:latest"
+        SLIM_DST="$SLIM_DST --destination $IMG:slim"
+      fi
+      /kaniko/executor --context "$CI_PROJECT_DIR" --dockerfile Dockerfile --no-cache $MAIN_DST
+      /kaniko/executor --context "$CI_PROJECT_DIR" --dockerfile Dockerfile.slim --no-cache $SLIM_DST

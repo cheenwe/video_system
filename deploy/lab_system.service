@@ -1,0 +1,24 @@
+# systemd 单元示例（裸机 / VM 部署，非 Docker）
+# 安装:
+#   sudo cp deploy/lab_system.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now lab_system
+
+[Unit]
+Description=lab_system (FastAPI video platform)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=lab
+Group=lab
+WorkingDirectory=/opt/lab_system
+EnvironmentFile=/opt/lab_system/.env
+ExecStart=/opt/lab_system/.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8808
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

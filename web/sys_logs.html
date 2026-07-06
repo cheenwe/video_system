@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>操作日志 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="card-box">
+    <ul class="nav nav-tabs log-tag-nav mb-3" id="logTagTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link active" id="log-tab-all" data-bs-toggle="tab" data-bs-target="#syslogs-pane" role="tab" aria-controls="syslogs-pane" aria-selected="true" data-log-tag="">全部</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link" id="log-tab-login" data-bs-toggle="tab" data-bs-target="#syslogs-pane" role="tab" aria-controls="syslogs-pane" aria-selected="false" data-log-tag="login">登录日志</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link" id="log-tab-operation" data-bs-toggle="tab" data-bs-target="#syslogs-pane" role="tab" aria-controls="syslogs-pane" aria-selected="false" data-log-tag="operation">操作日志</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link" id="log-tab-audit" data-bs-toggle="tab" data-bs-target="#syslogs-pane" role="tab" aria-controls="syslogs-pane" aria-selected="false" data-log-tag="audit">审计日志</button>
+      </li>
+    </ul>
+    <div class="tab-content" id="syslogs-tab-content">
+      <div class="tab-pane fade show active" id="syslogs-pane" role="tabpanel" aria-labelledby="log-tab-all" tabindex="0">
+        <div class="toolbar toolbar-list">
+          <input id="kw" placeholder="搜索操作/用户/备注" style="max-width:240px;" />
+
+          <select id="result" style="max-width:120px;">
+            <option value="">全部结果</option>
+            <option value="success">成功</option>
+            <option value="failed">失败</option>
+          </select>
+          <button type="button" class="btn" id="btnSearch">搜索</button>
+
+          <span class="grow"></span>
+        </div>
+        <table class="table">
+          <thead><tr><th>时间</th><th>标签</th><th>结果</th><th>用户</th><th>IP</th><th>操作</th><th>备注</th></tr></thead>
+          <tbody id="tb"></tbody>
+        </table>
+        <div class="pagination" id="pg"></div>
+      </div>
+    </div>
+  </div>
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/datepicker.min.js"></script>
+  <script src="js/datepicker.zh-CN.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/form-enhance.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/lab-import-export.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    let page = 1, pageSize = 30, currentTag = "";
+    function tagFromButton(btn) {
+      const v = btn.getAttribute("data-log-tag");
+      return v === null || v === "" ? "" : v;
+    }
+    (async () => {
+      await LabLayout.ensureLogin();
+      LabLayout.render("sys_logs", "操作日志");
+      document.getElementById("logTagTabs").addEventListener("shown.bs.tab", (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLElement) || !t.classList.contains("nav-link")) return;
+        currentTag = tagFromButton(t);
+        page = 1;
+        load();
+      });
+      document.getElementById("btnSearch").onclick = () => { page = 1; load(); };
+      LabImportExport.attachAdminToolbar(document.querySelector("#syslogs-pane .toolbar"), {
+        title: "操作日志 CSV 导出",
+        hintHtml: "<p class=\"muted\" style=\"margin:0 0 12px;font-size:13px;line-height:1.55\">按当前列表筛选条件导出（最多 10 万条）。日志不支持 CSV 导入。</p>",
+        exportFilename: "sys_logs_export.csv",
+        getExportUrl: () => {
+          const kw = document.getElementById("kw").value.trim();
+          const result = document.getElementById("result").value;
+          let u = "/api/sys-logs/csv/export?token=" + encodeURIComponent(LabAPI.getToken() || "");
+          u += "&keyword=" + encodeURIComponent(kw);
+          u += "&tag=" + encodeURIComponent(currentTag);
+          u += "&result=" + encodeURIComponent(result);
+          return u;
+        },
+        onImported: load,
+      });
+      load();
+    })();
+    async function load() {
+      const kw = document.getElementById("kw").value.trim();
+      const tag = currentTag;
+      const result = document.getElementById("result").value;
+      const r = await LabAPI.get(`/api/sys-logs?page=${page}&page_size=${pageSize}&keyword=${encodeURIComponent(kw)}&tag=${encodeURIComponent(tag)}&result=${encodeURIComponent(result)}`);
+      const items = r.data.items, total = r.data.total;
+      document.getElementById("tb").innerHTML = items.map(x => `
+        <tr>
+          <td class="muted">${LabAPI.formatDateTime(x.created_at || "")}</td>
+          <td>${tagPill(x.tag)}</td>
+          <td>${resultPill(x.result)}</td>
+          <td>${esc(x.username || "")}</td>
+          <td class="muted">${esc(x.ip || "")}</td>
+          <td>${esc(x.action)}</td>
+          <td class="muted">${esc(x.remark || "")}</td>
+        </tr>`).join("") || `<tr><td colspan="7" class="empty">暂无</td></tr>`;
+      const totalPage = Math.max(1, Math.ceil(total / pageSize));
+      document.getElementById("pg").innerHTML = `<button ${page<=1?"disabled":""} data-p="${page-1}">上一页</button><span>第 ${page}/${totalPage} 页（共 ${total} 条）</span><button ${page>=totalPage?"disabled":""} data-p="${page+1}">下一页</button>`;
+      document.querySelectorAll("#pg [data-p]").forEach(el => el.onclick = () => { page = +el.dataset.p; load(); });
+    }
+    function tagPill(v) {
+      if (v === "login") return `<span class="pill blue">登录日志</span>`;
+      if (v === "audit") return `<span class="pill orange">审计日志</span>`;
+      return `<span class="pill gray">操作日志</span>`;
+    }
+    function resultPill(v) {
+      if (v === "failed") return `<span class="pill red">失败</span>`;
+      return `<span class="pill green">成功</span>`;
+    }
+    function esc(s) { return String(s ?? "").replace(/[<>&"']/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c])); }
+  </script>
+</body>
+</html>

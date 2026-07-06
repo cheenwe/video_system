@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>系统概览 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <style>
+    .dash-section { margin-top: 24px; }
+    .dash-section:first-of-type { margin-top: 0; }
+    .dash-section-title {
+      font-size: 14px; font-weight: 600; color: var(--text, #334155);
+      margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border, #e2e8f0);
+    }
+    .dash-stat-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;
+    }
+    .dash-stat-card {
+      background: #f8fafc; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; padding: 14px 16px;
+    }
+    [data-theme="dark"] .dash-stat-card { background: #152238; }
+    .dash-stat-label { font-size: 12px; color: var(--muted, #64748b); margin-bottom: 6px; }
+    .dash-stat-value { font-size: 24px; font-weight: 600; line-height: 1.2; color: var(--text, #0f172a); }
+    .dash-stat-hint { font-size: 11px; color: var(--muted, #94a3b8); margin-top: 6px; }
+    .dash-stat-value.ok { color: #16a34a; }
+    .dash-stat-value.warn { color: #ea580c; }
+    .dash-empty { font-size: 13px; color: var(--muted, #64748b); padding: 8px 0; }
+  </style>
+</head>
+<body>
+  <div class="card-box">
+    <div class="head"><h3>系统概览</h3></div>
+
+    <div class="dash-section">
+      <div class="dash-section-title">运行状态</div>
+      <div class="dash-stat-grid" id="secHealth"></div>
+    </div>
+
+    <div class="dash-section" id="adminStatsWrap" style="display:none;">
+      <div class="dash-section-title">系统管理</div>
+      <div class="dash-stat-grid" id="secSystem"></div>
+
+      <div class="dash-section">
+        <div class="dash-section-title">视频内容</div>
+        <div class="dash-stat-grid" id="secVideo"></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-section-title">互动数据</div>
+        <div class="dash-stat-grid" id="secEngagement"></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-section-title">上传任务</div>
+        <div class="dash-stat-grid" id="secUpload"></div>
+      </div>
+    </div>
+
+    <div id="nonAdminHint" class="dash-empty" style="display:none;margin-top:16px;">
+      详细统计数据仅管理员可见。
+    </div>
+  </div>
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    function renderCards(containerId, items) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = items.map(function (it) {
+        return (
+          '<div class="dash-stat-card">' +
+          '<div class="dash-stat-label">' + it.label + "</div>" +
+          '<div class="dash-stat-value' + (it.cls ? " " + it.cls : "") + '">' + it.value + "</div>" +
+          (it.hint ? '<div class="dash-stat-hint">' + it.hint + "</div>" : "") +
+          "</div>"
+        );
+      }).join("");
+    }
+
+    function renderStats(data) {
+      const sys = data.system || {};
+      const vid = data.video || {};
+      const users = sys.users || {};
+      const logs = sys.sys_logs || {};
+      const videos = vid.videos || {};
+      const albums = vid.albums || {};
+      const uploads = vid.upload_sessions || {};
+
+      renderCards("secSystem", [
+        { label: "用户总数", value: users.total ?? 0, hint: "启用 " + (users.active ?? 0) + " · 禁用 " + (users.disabled ?? 0) },
+        { label: "管理员", value: users.admins ?? 0 },
+        { label: "系统配置", value: sys.sys_configs ?? 0 },
+        { label: "操作日志", value: logs.total ?? 0, hint: "登录 " + (logs.login ?? 0) + " · 操作 " + (logs.operation ?? 0) + " · 审计 " + (logs.audit ?? 0) },
+      ]);
+
+      renderCards("secVideo", [
+        { label: "视频总数", value: videos.total ?? 0, hint: "公开 " + (videos.public ?? 0) + " · 隐私 " + (videos.private ?? 0) },
+        { label: "就绪视频", value: videos.ready ?? 0 },
+        { label: "视频分类", value: vid.categories ?? 0 },
+        { label: "视频专辑", value: albums.total ?? 0, hint: "公开 " + (albums.public ?? 0) + " · 隐私 " + (albums.private ?? 0) },
+        { label: "专辑分集", value: vid.album_items ?? 0 },
+      ]);
+
+      renderCards("secEngagement", [
+        { label: "累计播放", value: vid.views_total ?? 0 },
+        { label: "评论", value: vid.comments ?? 0 },
+        { label: "点赞记录", value: vid.likes ?? 0 },
+        { label: "收藏记录", value: vid.favorites ?? 0 },
+      ]);
+
+      renderCards("secUpload", [
+        { label: "上传会话", value: uploads.total ?? 0 },
+        { label: "上传中", value: uploads.uploading ?? 0, cls: (uploads.uploading > 0 ? "warn" : "") },
+        { label: "已完成", value: uploads.completed ?? 0 },
+      ]);
+    }
+
+    (async function () {
+      await LabLayout.ensureLogin();
+      LabLayout.render("dashboard", "系统概览");
+
+      let healthOk = false;
+      try {
+        const health = await LabAPI.get("/api/health");
+        healthOk = health && health.success === 1;
+      } catch (_) {}
+
+      renderCards("secHealth", [
+        { label: "服务状态", value: healthOk ? "正常" : "异常", cls: healthOk ? "ok" : "warn" },
+      ]);
+
+      if (!LabAPI.isAdmin()) {
+        document.getElementById("nonAdminHint").style.display = "";
+        return;
+      }
+
+      document.getElementById("adminStatsWrap").style.display = "";
+      try {
+        const r = await LabAPI.get("/api/dashboard/stats");
+        if (LabAPI.ok(r)) renderStats(r.data);
+        else LabAPI.toast(LabAPI.msg(r) || "加载统计失败", "error");
+      } catch (_) {
+        LabAPI.toast("加载统计失败", "error");
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人中心 - 基础平台</title>
+  <link rel="stylesheet" href="css/main-vendors.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/demo.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="card-box profile-page">
+    <div class="head"><h3>个人中心</h3></div>
+
+    <div class="profile-hero">
+      <div class="profile-avatar-wrap" id="avatarWrap">
+        <img id="avatarImg" class="profile-avatar-img" alt="头像" style="display:none" />
+        <span id="avatarLetter" class="profile-avatar-letter">U</span>
+      </div>
+      <div class="profile-hero-meta">
+        <div class="profile-hero-name" id="heroName">—</div>
+        <div class="profile-hero-sub muted" id="heroUsername">@username</div>
+        <div class="profile-avatar-actions">
+          <button type="button" class="btn sm primary" id="btnAvatarPick">更换头像</button>
+          <button type="button" class="btn sm" id="btnAvatarRemove" style="display:none">恢复默认</button>
+          <input type="file" id="avatarInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">基本信息</div>
+      <div class="profile-form-grid">
+        <div class="profile-field">
+          <label>用户名</label>
+          <input id="f_username" readonly class="profile-input readonly" />
+        </div>
+        <div class="profile-field">
+          <label for="f_real_name">姓名</label>
+          <input id="f_real_name" class="profile-input" maxlength="64" placeholder="真实姓名或昵称" />
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">显示时区</div>
+      <p class="profile-section-desc">界面中的日期时间将按此时区展示，数据库仍以 UTC 存储。</p>
+      <div class="profile-tz-select-wrap">
+        <select id="f_timezone" class="selectize-remote profile-tz-select"></select>
+      </div>
+      <div class="profile-tz-card" id="tz_preview" aria-live="polite">
+        <div class="profile-tz-card-row">
+          <span class="profile-tz-card-label">时区</span>
+          <span class="profile-tz-card-value tz-iana" id="tz_preview_iana">—</span>
+        </div>
+        <div class="profile-tz-card-row" id="tz_preview_offset_item" hidden>
+          <span class="profile-tz-card-label">UTC 偏移</span>
+          <span class="profile-tz-card-value" id="tz_preview_offset">—</span>
+        </div>
+        <div class="profile-tz-card-row">
+          <span class="profile-tz-card-label">当前预览</span>
+          <span class="profile-tz-card-value"><time id="tz_preview_sample" datetime="">—</time></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-actions">
+      <button class="btn primary" id="btnSave">保存资料</button>
+    </div>
+  </div>
+
+  <script src="js/jquery.slim.min.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/bootstrap.bundle.min.js"></script>
+  <script src="js/datepicker.min.js"></script>
+  <script src="js/datepicker.zh-CN.js"></script>
+  <script src="js/application-default.js" data-turbolinks-suppress-warning></script>
+  <script src="js/form-enhance.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/lab_timezones.js"></script>
+  <script>
+    let profileUser = null;
+
+    (async () => {
+      await LabLayout.ensureLogin();
+      LabLayout.render("profile", "个人中心");
+      await loadProfile();
+      document.getElementById("btnSave").onclick = save;
+      document.getElementById("btnAvatarPick").onclick = () => document.getElementById("avatarInput").click();
+      document.getElementById("btnAvatarRemove").onclick = removeAvatar;
+      document.getElementById("avatarInput").onchange = uploadAvatar;
+    })();
+
+    async function loadProfile() {
+      const me = await LabAPI.get("/api/auth/me");
+      if (!LabAPI.ok(me)) return LabAPI.toast(LabAPI.msg(me), "error");
+      profileUser = me.data;
+      document.getElementById("f_username").value = profileUser.username || "";
+      document.getElementById("f_real_name").value = profileUser.real_name || "";
+      document.getElementById("heroName").textContent = profileUser.real_name || profileUser.username || "—";
+      document.getElementById("heroUsername").textContent = "@" + (profileUser.username || "");
+      renderAvatar(profileUser);
+      await LabTimezones.setupTimezoneSelect(
+        document.getElementById("f_timezone"),
+        (profileUser.timezone || "UTC").trim()
+      );
+      attachTzPreview();
+    }
+
+    function renderAvatar(u) {
+      const img = document.getElementById("avatarImg");
+      const letter = document.getElementById("avatarLetter");
+      const removeBtn = document.getElementById("btnAvatarRemove");
+      const name = u.real_name || u.username || "U";
+      letter.textContent = name.slice(0, 1).toUpperCase();
+      if (u.avatar_url) {
+        img.src = u.avatar_url + (u.avatar_url.indexOf("?") >= 0 ? "&" : "?") + "_t=" + Date.now();
+        img.style.display = "";
+        letter.style.display = "none";
+        removeBtn.style.display = "";
+      } else {
+        img.style.display = "none";
+        img.removeAttribute("src");
+        letter.style.display = "";
+        removeBtn.style.display = "none";
+      }
+    }
+
+    async function uploadAvatar() {
+      const input = document.getElementById("avatarInput");
+      const file = input.files && input.files[0];
+      input.value = "";
+      if (!file) return;
+      const fd = new FormData();
+      fd.append("file", file);
+      const token = LabAPI.getToken();
+      const resp = await fetch("/api/auth/avatar", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: fd,
+      });
+      const data = await resp.json();
+      if (!data || data.success !== 1) return LabAPI.toast((data && data.msg) || "上传失败", "error");
+      profileUser = data.data;
+      const prev = LabAPI.getUser() || {};
+      LabAPI.setUser(Object.assign({}, prev, profileUser));
+      renderAvatar(profileUser);
+      LabAPI.toast("头像已更新", "success");
+      LabLayout.render("profile", "个人中心");
+      bindAvatarButtons();
+    }
+
+    async function removeAvatar() {
+      if (!confirm("确定恢复为默认头像？")) return;
+      const r = await LabAPI.del("/api/auth/avatar");
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      profileUser = r.data;
+      const prev = LabAPI.getUser() || {};
+      LabAPI.setUser(Object.assign({}, prev, profileUser));
+      renderAvatar(profileUser);
+      LabAPI.toast("已恢复默认头像", "success");
+      LabLayout.render("profile", "个人中心");
+      bindAvatarButtons();
+    }
+
+    function bindAvatarButtons() {
+      document.getElementById("btnAvatarPick").onclick = () => document.getElementById("avatarInput").click();
+      document.getElementById("btnAvatarRemove").onclick = removeAvatar;
+      document.getElementById("avatarInput").onchange = uploadAvatar;
+    }
+
+    async function save() {
+      const tz = LabTimezones.getSelectValue(document.getElementById("f_timezone")) || "UTC";
+      const body = {
+        real_name: document.getElementById("f_real_name").value.trim() || null,
+        timezone: tz,
+      };
+      const r = await LabAPI.put("/api/auth/profile", body);
+      if (!LabAPI.ok(r)) return LabAPI.toast(LabAPI.msg(r), "error");
+      profileUser = r.data;
+      const prev = LabAPI.getUser() || {};
+      LabAPI.setUser(Object.assign({}, prev, profileUser));
+      document.getElementById("heroName").textContent = profileUser.real_name || profileUser.username || "—";
+      renderAvatar(profileUser);
+      LabAPI.toast("已保存", "success");
+      LabLayout.render("profile", "个人中心");
+      await LabTimezones.setupTimezoneSelect(
+        document.getElementById("f_timezone"),
+        (profileUser.timezone || "UTC").trim()
+      );
+      attachTzPreview();
+      bindAvatarButtons();
+    }
+
+    function attachTzPreview() {
+      const sel = document.getElementById("f_timezone");
+      const elIana = document.getElementById("tz_preview_iana");
+      const elOffItem = document.getElementById("tz_preview_offset_item");
+      const elOff = document.getElementById("tz_preview_offset");
+      const elSample = document.getElementById("tz_preview_sample");
+      if (!sel || !elIana) return;
+      if (sel.selectize && sel._tzPreviewUpdater) {
+        try { sel.selectize.off("change", sel._tzPreviewUpdater); } catch (_) {}
+      }
+      function upd() {
+        const tz = LabTimezones.getSelectValue(sel) || "UTC";
+        const off = LabTimezones.utcOffsetLabel(tz);
+        elIana.textContent = tz;
+        if (off) {
+          elOff.textContent = off;
+          elOffItem.hidden = false;
+        } else {
+          elOffItem.hidden = true;
+        }
+        let sample = "—";
+        try {
+          const fmt = new Intl.DateTimeFormat("sv-SE", {
+            timeZone: tz,
+            year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit", second: "2-digit",
+            hour12: false,
+          });
+          const now = new Date();
+          sample = fmt.format(now).replace(",", " ");
+          elSample.setAttribute("datetime", now.toISOString());
+        } catch (_) {
+          elSample.removeAttribute("datetime");
+        }
+        elSample.textContent = sample;
+      }
+      sel._tzPreviewUpdater = upd;
+      if (sel.selectize) sel.selectize.on("change", upd);
+      upd();
+    }
+  </script>
+</body>
+</html>
