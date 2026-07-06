@@ -93,8 +93,7 @@ docker compose --profile prod --profile mysql up -d --build
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `PORT` | 8808 | **宿主机**映射端口（sqlite/mysql profile） |
-| `APP_PORT` | 8808 | 容器内 uvicorn 监听端口 |
+| `PORT` | 8808 | 应用监听端口；Docker 下宿主机与容器内均使用同一值 |
 | `WEB_CONCURRENCY` | 1 | uvicorn worker 数；>1 时勿依赖应用内备份调度 |
 | `WAIT_FOR_DB` | true | MySQL 模式等待数据库就绪 |
 | `REDIS_URL` | `redis://redis:6379/0` | Compose 内默认；`.env` 留空时 compose 仍用此默认 |
@@ -289,7 +288,7 @@ MySQL 备份需可执行 `mysqldump`（标准 `Dockerfile` 已含客户端库；
 | 转码超时 | 增大 `VIDEO_TRANSCODE_TIMEOUT_SEC` 或压缩源文件 |
 | Docker 构建 apt 失败 | 使用默认 `APT_MIRROR=huawei` 或检查网络 |
 | Docker 构建 pip 失败 | 确认 `head -2 Dockerfile.slim` 为 `# build: pip-tsinghua`；`build --no-cache`；日志应有 `pip: Tsinghua mirror` |
-| 端口不一致 | 容器内以 `PORT`/`APP_PORT` 为准；日志中 uvicorn 行才是实际监听 |
+| 端口不一致 | 以 `.env` 的 `PORT` 为准；日志中 uvicorn 行才是实际监听 |
 | API 文档 404 | 生产 `DEBUG=false` 为预期行为 |
 
 ---

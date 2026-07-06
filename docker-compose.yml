@@ -8,7 +8,7 @@
 # 生产（应用 + Nginx 反代，需先准备 deploy/nginx.conf 与 SSL）：
 #   docker compose --profile prod --profile mysql up -d --build
 #
-# 环境变量：PORT 映射宿主机端口；容器内应用始终读 PORT（默认 8808）
+# 环境变量：PORT 为应用监听端口；Docker 映射为 宿主机:容器 同一端口
 
 x-app-common: &app-common
   restart: unless-stopped
@@ -16,7 +16,7 @@ x-app-common: &app-common
     - .env
   environment: &app-env
     HOST: 0.0.0.0
-    PORT: ${APP_PORT:-8808}
+    PORT: ${PORT:-8808}
     UPLOAD_ROOT: /app/uploads
     DEBUG: ${DEBUG:-false}
     WAIT_FOR_DB: ${WAIT_FOR_DB:-true}
@@ -71,7 +71,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "${PORT:-8808}:${APP_PORT:-8808}"
+      - "${PORT:-8808}:${PORT:-8808}"
     environment:
       <<: *app-env
       DATABASE_URL: sqlite:///./data/lab_system.db
@@ -116,7 +116,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "${PORT:-8808}:${APP_PORT:-8808}"
+      - "${PORT:-8808}:${PORT:-8808}"
     environment:
       <<: *app-env
       MYSQL_HOST: mysql
@@ -137,7 +137,7 @@ services:
       redis:
         condition: service_healthy
     expose:
-      - "${APP_PORT:-8808}"
+      - "${PORT:-8808}"
     environment:
       <<: *app-env
       DEBUG: "false"

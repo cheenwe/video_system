@@ -129,11 +129,10 @@
     const img = document.getElementById("hubLogoImg");
     const text = document.getElementById("hubLogoText");
     const name = data.site_name || DEFAULT_SITE_NAME;
-    const github = (data.github_url || DEFAULT_GITHUB_URL).trim();
-    if (wrap && github) {
-      wrap.href = github;
-      wrap.target = "_blank";
-      wrap.rel = "noopener noreferrer";
+    if (wrap) {
+      wrap.href = "index";
+      wrap.removeAttribute("target");
+      wrap.removeAttribute("rel");
     }
     if (text) {
       text.textContent = name;
@@ -154,12 +153,42 @@
     return raw.replace(/\{year\}/gi, String(new Date().getFullYear()));
   }
 
+  function escHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function linkifySiteNameInCopyright(text, siteName, githubUrl) {
+    const formatted = formatCopyright(text);
+    if (!formatted) return "";
+    const name = String(siteName || DEFAULT_SITE_NAME).trim();
+    const gh = String(githubUrl || DEFAULT_GITHUB_URL).trim();
+    if (!name || !gh) return escHtml(formatted);
+    const idx = formatted.indexOf(name);
+    if (idx === -1) return escHtml(formatted);
+    const before = escHtml(formatted.slice(0, idx));
+    const after = escHtml(formatted.slice(idx + name.length));
+    const link =
+      '<a href="' +
+      escHtml(gh) +
+      '" target="_blank" rel="noopener noreferrer">' +
+      escHtml(name) +
+      "</a>";
+    return before + link + after;
+  }
+
   function applyFooter(data) {
     const page = document.querySelector(".hub-page");
     if (!page) return;
-    const text = formatCopyright(data.copyright_text);
+    const text = data.copyright_text;
+    const siteName = data.site_name || DEFAULT_SITE_NAME;
+    const github = (data.github_url || DEFAULT_GITHUB_URL).trim();
     let footer = document.getElementById("hubFooter");
-    if (!text) {
+    const html = linkifySiteNameInCopyright(text, siteName, github);
+    if (!html) {
       if (footer) footer.remove();
       return;
     }
@@ -169,7 +198,7 @@
       footer.className = "hub-footer";
       page.appendChild(footer);
     }
-    footer.textContent = text;
+    footer.innerHTML = html;
   }
 
   function uploadButtonHtml(label, href, id) {
