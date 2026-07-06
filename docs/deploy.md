@@ -63,7 +63,9 @@ curl -fsS http://127.0.0.1:8808/api/health
 ```bash
 cp .env.example .env
 # 建议生产改 SECRET_KEY、DEBUG=false
-docker compose --profile sqlite up -d --build
+# 若曾构建失败，请加 --no-cache 避免使用旧的 pip 安装层
+docker compose --profile sqlite build --no-cache
+docker compose --profile sqlite up -d
 curl -fsS http://127.0.0.1:8808/api/health
 ```
 
@@ -157,7 +159,7 @@ docker compose exec app-sqlite ffmpeg -version
 
 国内构建无法访问 `deb.debian.org` 时，默认通过 `scripts/docker-apt-mirror.sh` 切换 **华为云 APT 镜像**（`APT_MIRROR=huawei`）。
 
-`pip install` 默认通过 `scripts/docker-pip-install.sh` 使用 **华为云 PyPI 镜像**（`PIP_MIRROR=huawei`，源地址 `https://repo.huaweicloud.com/repository/pypi/simple`）。海外构建：
+`pip install` 在 Dockerfile 中内联使用 **华为云 PyPI 镜像**（`PIP_MIRROR=huawei`，构建日志应出现 `pip: using Huawei Cloud mirror`）。也可通过 `scripts/docker-pip-install.sh` 在本地安装依赖。
 
 ```bash
 APT_MIRROR=off PIP_MIRROR=off docker compose --profile sqlite up -d --build
@@ -171,7 +173,8 @@ APT_MIRROR=off PIP_MIRROR=off docker compose --profile sqlite up -d --build
 sudo useradd -r -m -d /opt/video_system video || true
 sudo rsync -a --exclude .venv --exclude data --exclude uploads ./ /opt/video_system/
 cd /opt/video_system
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 -m venv .venv
+PIP_MIRROR=huawei PYTHON=.venv/bin/python sh scripts/docker-pip-install.sh
 # 安装 ffmpeg：apt install ffmpeg  /  brew install ffmpeg
 cp .env.example .env   # 编辑 DATABASE_URL、SECRET_KEY、REDIS_URL 等
 .venv/bin/python scripts/init_data.py

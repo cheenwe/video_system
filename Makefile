@@ -12,9 +12,11 @@ help:
 	@echo "  make health        - curl /api/health"
 	@echo "  make test          - pytest"
 
+PIP_MIRROR ?= huawei
+
 install:
 	python3 -m venv .venv
-	.venv/bin/pip install -r requirements.txt
+	PIP_MIRROR=$(PIP_MIRROR) PYTHON=.venv/bin/python sh scripts/docker-pip-install.sh
 
 dev: init
 	.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8808 --reload

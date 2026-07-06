@@ -18,8 +18,19 @@ RUN if [ "$APT_MIRROR" = "huawei" ]; then \
 
 COPY requirements.txt .
 ARG PIP_MIRROR=huawei
-COPY scripts/docker-pip-install.sh /tmp/docker-pip-install.sh
-RUN PIP_MIRROR="${PIP_MIRROR}" sh /tmp/docker-pip-install.sh
+RUN if [ "$PIP_MIRROR" = "huawei" ]; then \
+      echo "pip: using Huawei Cloud mirror (repo.huaweicloud.com)"; \
+      python -m pip install --no-cache-dir --upgrade pip \
+        -i https://repo.huaweicloud.com/repository/pypi/simple \
+        --trusted-host repo.huaweicloud.com; \
+      python -m pip install --no-cache-dir -r requirements.txt \
+        -i https://repo.huaweicloud.com/repository/pypi/simple \
+        --trusted-host repo.huaweicloud.com; \
+    else \
+      echo "pip: using default PyPI"; \
+      python -m pip install --no-cache-dir --upgrade pip; \
+      python -m pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 COPY . .
 
