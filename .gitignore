@@ -15,4 +15,3 @@ venv/
 .DS_Store
 .cur*
 .pytest*
-*.sh
