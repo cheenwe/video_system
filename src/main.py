@@ -99,6 +99,11 @@ def create_app() -> FastAPI:
 
     web_dir = settings.bundle_root / "web"
 
+    # 无同名 .html 时的路径别名（侧栏 href 与物理文件名不一致）
+    _PAGE_ALIASES: dict[str, str] = {
+        "video_system": "video_manage.html",
+    }
+
     @app.get("/api/health", tags=["系统"])
     def health():
         payload: dict = {"success": 1, "msg": "ok"}
@@ -120,6 +125,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404)
         if rest_of_path in ("robots.txt", "sitemap.xml"):
             raise HTTPException(status_code=404)
+        alias_file = _PAGE_ALIASES.get(rest_of_path)
+        if alias_file:
+            alias_path = (web_dir / alias_file).resolve()
+            if str(alias_path).startswith(str(web_dir.resolve())) and alias_path.is_file():
+                return FileResponse(str(alias_path))
         full = (web_dir / rest_of_path).resolve()
         base = web_dir.resolve()
         if not str(full).startswith(str(base)):

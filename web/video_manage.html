@@ -10,16 +10,16 @@
   <link rel="stylesheet" href="css/app.css" />
 </head>
 <body>
-  <div class="card-box">
-    <div class="head"><h3>视频管理</h3></div>
-    <p class="muted" style="font-size:13px;margin:0 0 12px;">管理已发布视频：修改标题/简介/分类/可见性、更换封面、替换视频文件或删除。</p>
+  <div id="viewList" class="card-box">
     <div class="toolbar toolbar-list">
-      <input id="kw" placeholder="搜索标题或简介" style="max-width:220px;" />
+      <div class="toolbar-search-input-btn">
+        <input id="kw" placeholder="搜索标题或简介" style="max-width:220px;" />
+        <button type="button" class="btn" id="btnSearch">搜索</button>
+      </div>
       <select id="fScope" style="max-width:140px;">
         <option value="mine">我的视频</option>
         <option value="all">全部视频</option>
       </select>
-      <button class="btn" id="btnSearch">搜索</button>
       <span class="grow"></span>
       <a class="btn primary" href="video_upload">+ 上传新视频</a>
     </div>
@@ -32,14 +32,14 @@
           <th>分类</th>
           <th>可见性</th>
           <th>播放量</th>
-          <th>文件</th>
+          <th>文件大小</th>
           <th>创建时间</th>
-          <th width="200">操作</th>
+          <th width="220">操作</th>
         </tr>
       </thead>
       <tbody id="tb"></tbody>
     </table>
-    <div class="pagination vm-pagination" id="pg"></div>
+    <div class="pagination" id="pg"></div>
   </div>
 
   <script src="js/jquery.slim.min.js"></script>
@@ -51,7 +51,7 @@
   <script>
     let page = 1;
     let total = 0;
-    const pageSize = 15;
+    const pageSize = 20;
 
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -103,6 +103,20 @@
       document.getElementById("pgNext")?.addEventListener("click", () => { if (page < pages) { page++; loadList(); } });
     }
 
+    function previewHref(v) {
+      return v.ref ? ("video?v=" + encodeURIComponent(v.ref)) : ("video?id=" + v.id);
+    }
+
+    function renderActions(v) {
+      if (!v.can_manage) return '<span class="muted">—</span>';
+      const ph = esc(previewHref(v));
+      return (
+        '<button type="button" class="btn sm" data-preview-href="' + ph + '">预览</button> ' +
+        '<button type="button" class="btn sm" data-edit="' + v.id + '">编辑</button> ' +
+        '<button type="button" class="btn sm danger" data-del="' + v.id + '">删除</button>'
+      );
+    }
+
     async function loadList() {
       const kw = document.getElementById("kw").value.trim();
       const scope = document.getElementById("fScope").value;
@@ -119,21 +133,17 @@
         return (
           "<tr>" +
           "<td>" + thumb + "</td>" +
-          "<td>#" + v.id + "</td>" +
-          '<td><strong>' + esc(v.title) + "</strong></td>" +
+          "<td>" + v.id + "</td>" +
+          "<td><strong>" + esc(v.title) + "</strong></td>" +
           "<td>" + esc(v.category_name || "—") + "</td>" +
-          "<td>" + (v.visibility === "private" ? "隐私" : "公开") + "</td>" +
+          "<td>" + (v.visibility === "private" ? '<span class="pill gray">隐私</span>' : '<span class="pill green">公开</span>') + "</td>" +
           "<td>" + (v.view_count || 0) + "</td>" +
-          "<td>" + formatSize(v.file_size) + "</td>" +
-          "<td>" + esc(v.created_at || "—") + "</td>" +
-          '<td><a class="btn sm" href="' + (v.ref ? ('video?v=' + encodeURIComponent(v.ref)) : ('video?id=' + v.id)) + '" target="_blank">预览</a> ' +
-          (v.can_manage
-            ? '<a class="btn sm" href="video_edit?id=' + v.id + '">编辑</a> ' +
-              '<button class="btn sm danger" data-del="' + v.id + '">删除</button>'
-            : '<span class="muted" style="font-size:12px;">—</span>') +
-          "</td></tr>"
+          "<td class=\"muted\">" + formatSize(v.file_size) + "</td>" +
+          '<td class="muted">' + esc(LabAPI.formatDateTime(v.created_at || "")) + "</td>" +
+          '<td class="actions">' + renderActions(v) + "</td>" +
+          "</tr>"
         );
-      }).join("") || '<tr><td colspan="9" class="muted">暂无视频</td></tr>';
+      }).join("") || '<tr><td colspan="9" class="empty">暂无视频</td></tr>';
       renderPagination();
     }
 
@@ -148,8 +158,22 @@
 
       document.getElementById("btnSearch").onclick = () => { page = 1; loadList(); };
       document.getElementById("fScope").onchange = () => { page = 1; loadList(); };
+      document.getElementById("kw").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { page = 1; loadList(); }
+      });
 
       document.getElementById("tb").addEventListener("click", async (e) => {
+        const edit = e.target.closest("[data-edit]");
+        if (edit) {
+          location.href = "video_edit?id=" + encodeURIComponent(edit.dataset.edit);
+          return;
+        }
+        const preview = e.target.closest("[data-preview-href]");
+        if (preview) {
+          const href = preview.getAttribute("data-preview-href");
+          if (href) window.open(href, "_blank");
+          return;
+        }
         const del = e.target.closest("[data-del]");
         if (!del) return;
         if (!confirm("确定删除该视频？文件与封面将一并删除。")) return;
