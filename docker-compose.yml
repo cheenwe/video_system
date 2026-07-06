@@ -32,6 +32,12 @@ x-app-common: &app-common
     timeout: 5s
     retries: 10
     start_period: 30s
+x-app-build: &app-build
+  context: .
+  network: host
+  args:
+    APT_MIRROR: ${APT_MIRROR:-huawei}
+    PIP_MIRROR: ${PIP_MIRROR:-huawei}
 
 services:
   redis:
@@ -56,11 +62,8 @@ services:
   app-sqlite:
     <<: *app-common
     build:
-      context: .
+      <<: *app-build
       dockerfile: Dockerfile.slim
-      args:
-        APT_MIRROR: ${APT_MIRROR:-huawei}
-        PIP_MIRROR: ${PIP_MIRROR:-huawei}
     image: ${LAB_SYSTEM_IMAGE:-lab_system:local-slim}
     container_name: lab_system_sqlite
     profiles: ["sqlite"]
@@ -102,11 +105,8 @@ services:
   app-mysql:
     <<: *app-common
     build:
-      context: .
+      <<: *app-build
       dockerfile: Dockerfile
-      args:
-        APT_MIRROR: ${APT_MIRROR:-huawei}
-        PIP_MIRROR: ${PIP_MIRROR:-huawei}
     image: ${LAB_SYSTEM_IMAGE:-lab_system:local}
     container_name: lab_system_app
     profiles: ["mysql"]
@@ -126,11 +126,8 @@ services:
   app-prod:
     <<: *app-common
     build:
-      context: .
+      <<: *app-build
       dockerfile: Dockerfile
-      args:
-        APT_MIRROR: ${APT_MIRROR:-huawei}
-        PIP_MIRROR: ${PIP_MIRROR:-huawei}
     image: ${LAB_SYSTEM_IMAGE:-lab_system:local}
     container_name: lab_system_app_prod
     profiles: ["prod"]

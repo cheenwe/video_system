@@ -1,4 +1,5 @@
 # lab_system 标准镜像（MySQL 客户端 + 健康检查 curl）
+# build: pip-mirror-v3
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -16,21 +17,9 @@ RUN if [ "$APT_MIRROR" = "huawei" ]; then \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt scripts/docker-pip-install.sh ./
 ARG PIP_MIRROR=huawei
-RUN if [ "$PIP_MIRROR" = "huawei" ]; then \
-      echo "pip: using Huawei Cloud mirror (repo.huaweicloud.com)"; \
-      python -m pip install --no-cache-dir --upgrade pip \
-        -i https://repo.huaweicloud.com/repository/pypi/simple \
-        --trusted-host repo.huaweicloud.com; \
-      python -m pip install --no-cache-dir -r requirements.txt \
-        -i https://repo.huaweicloud.com/repository/pypi/simple \
-        --trusted-host repo.huaweicloud.com; \
-    else \
-      echo "pip: using default PyPI"; \
-      python -m pip install --no-cache-dir --upgrade pip; \
-      python -m pip install --no-cache-dir -r requirements.txt; \
-    fi
+RUN PIP_MIRROR="${PIP_MIRROR}" PYTHON=python sh scripts/docker-pip-install.sh
 
 COPY . .
 
