@@ -37,7 +37,7 @@ x-app-build: &app-build
   network: host
   args:
     APT_MIRROR: ${APT_MIRROR:-huawei}
-    PIP_MIRROR: ${PIP_MIRROR:-huawei}
+    PIP_MIRROR: ${PIP_MIRROR:-tsinghua}
 
 services:
   redis:

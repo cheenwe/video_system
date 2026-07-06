@@ -159,25 +159,27 @@ docker compose exec app-sqlite ffmpeg -version
 
 国内构建无法访问 `deb.debian.org` 时，默认通过 `scripts/docker-apt-mirror.sh` 切换 **华为云 APT 镜像**（`APT_MIRROR=huawei`）。
 
-`pip install` 由 `scripts/docker-pip-install.sh` 执行，**依次尝试**清华 → 阿里云 → 腾讯云 → 华为云镜像（构建前用 `curl` 探测，华为云若返回 **HTTP 429** 会自动跳过），最后回退官方 PyPI。Dockerfile 第二行注释含 `build: pip-mirror-v3` 表示已更新。
+`pip install` 默认在 Dockerfile 内执行（与手动一致）：
 
-**服务器代码须同步**：`head -2 Dockerfile.slim` 应看到 `# build: pip-mirror-v3`；若仍是 `FROM python:3.11-slim` 在第二行，说明未拉取最新代码，请先 `git pull`。
+```dockerfile
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pip -U
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+pip install --no-cache-dir -r requirements.txt
+```
 
-构建时若出现 `Network is unreachable`，Compose 已默认 `build.network: host`；仍失败请检查宿主机网络 / VPN / 公司代理。
+`PIP_MIRROR=off` 时跳过清华源配置。`Dockerfile.slim` 第二行应为 `# build: pip-tsinghua`（若仍是 `FROM python:3.11-slim` 说明代码未同步）。
 
 ```bash
-# 宿主机可先测镜像是否可用（200 正常；429 会被跳过）
-curl -I https://pypi.tuna.tsinghua.edu.cn/simple
-curl -I https://mirrors.aliyun.com/pypi/simple/
-
-# 必须无缓存重建
+head -2 Dockerfile.slim
 docker compose --profile sqlite build --no-cache --progress=plain
 ```
 
-海外或仅需官方源：
+构建日志第 6 步应出现 `pip: Tsinghua mirror`，**不应**再是单独的 `RUN pip install --no-cache-dir -r requirements.txt`。
+
+海外构建：
 
 ```bash
-APT_MIRROR=off PIP_MIRROR=off docker compose --profile sqlite build --no-cache
+PIP_MIRROR=off docker compose --profile sqlite build --no-cache
 ```
 
 ---
@@ -286,7 +288,7 @@ MySQL 备份需可执行 `mysqldump`（标准 `Dockerfile` 已含客户端库；
 | MOV 无法播放 | 确认 `VIDEO_TRANSCODE_ENABLED=true` 且容器内 `ffmpeg -version` 正常 |
 | 转码超时 | 增大 `VIDEO_TRANSCODE_TIMEOUT_SEC` 或压缩源文件 |
 | Docker 构建 apt 失败 | 使用默认 `APT_MIRROR=huawei` 或检查网络 |
-| Docker 构建 pip 失败 | 先 `git pull` 确认 `Dockerfile.slim` 含 `pip-mirror-v3`；`build --no-cache`；华为云 429 时会自动换清华/阿里云 |
+| Docker 构建 pip 失败 | 确认 `head -2 Dockerfile.slim` 为 `# build: pip-tsinghua`；`build --no-cache`；日志应有 `pip: Tsinghua mirror` |
 | 端口不一致 | 容器内以 `PORT`/`APP_PORT` 为准；日志中 uvicorn 行才是实际监听 |
 | API 文档 404 | 生产 `DEBUG=false` 为预期行为 |
 

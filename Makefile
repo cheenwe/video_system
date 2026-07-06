@@ -12,7 +12,7 @@ help:
 	@echo "  make health        - curl /api/health"
 	@echo "  make test          - pytest"
 
-PIP_MIRROR ?= huawei
+PIP_MIRROR ?= tsinghua
 
 install:
 	python3 -m venv .venv

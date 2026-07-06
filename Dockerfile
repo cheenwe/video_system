@@ -1,5 +1,5 @@
 # lab_system 标准镜像（MySQL 客户端 + 健康检查 curl）
-# build: pip-mirror-v3
+# build: pip-tsinghua
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -17,9 +17,18 @@ RUN if [ "$APT_MIRROR" = "huawei" ]; then \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt scripts/docker-pip-install.sh ./
-ARG PIP_MIRROR=huawei
-RUN PIP_MIRROR="${PIP_MIRROR}" PYTHON=python sh scripts/docker-pip-install.sh
+COPY requirements.txt .
+ARG PIP_MIRROR=tsinghua
+RUN if [ "$PIP_MIRROR" != "off" ]; then \
+      echo "pip: Tsinghua mirror"; \
+      pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn pip -U; \
+      pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple; \
+      pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn; \
+    else \
+      echo "pip: PIP_MIRROR=off"; \
+      pip install --no-cache-dir -U pip; \
+    fi \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

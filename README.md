@@ -154,7 +154,7 @@ python -m uvicorn src.main:app --host 0.0.0.0 --port 8808 --reload
 | `REDIS_URL` | Redis 连接串；Docker 内默认 `redis://redis:6379/0` |
 | `BACKUP_EMAIL_*` / `SMTP_*` | 可选定时数据库备份邮件 |
 | `APT_MIRROR` | Docker 构建 Debian 源：`huawei`（默认）/ `off` |
-| `PIP_MIRROR` | Docker 构建 PyPI 源：`huawei`（默认）/ `off` |
+| `PIP_MIRROR` | Docker 构建 PyPI：`tsinghua`（默认）/ `off` |
 
 完整说明见 `.env.example` 与 **[docs/deploy.md](docs/deploy.md)**。
 
@@ -181,8 +181,8 @@ curl -fsS http://127.0.0.1:8808/api/health
 **说明：**
 
 - Compose 会启动 **redis** 服务，并注入 `REDIS_URL`（`.env` 中留空时使用默认 `redis://redis:6379/0`）
-- 镜像内置 **ffmpeg**；国内构建默认使用 **华为云 APT / PyPI 镜像**（`APT_MIRROR=huawei`、`PIP_MIRROR=huawei`）
-- 海外构建：`APT_MIRROR=off PIP_MIRROR=off docker compose --profile sqlite up -d --build`
+- 国内构建默认 **清华 PyPI**（`PIP_MIRROR=tsinghua`）、**华为云 APT**（`APT_MIRROR=huawei`）
+- 海外构建：`PIP_MIRROR=off APT_MIRROR=off docker compose --profile sqlite build --no-cache`
 
 详细步骤、转码、Redis、数据卷、Nginx、systemd 见 **[docs/deploy.md](docs/deploy.md)**。
 
