@@ -53,6 +53,8 @@ class MediaProbe:
     video_codec: str | None
     audio_codec: str | None
     format_name: str | None
+    width: int = 0
+    height: int = 0
 
 
 @dataclass(frozen=True)
@@ -106,7 +108,7 @@ def probe_media(path: Path) -> MediaProbe:
             "-show_entries",
             "format=duration,format_name",
             "-show_entries",
-            "stream=codec_name,codec_type",
+            "stream=codec_name,codec_type,width,height",
             "-of",
             "json",
             str(path),
@@ -133,16 +135,23 @@ def probe_media(path: Path) -> MediaProbe:
 
     video_codec = None
     audio_codec = None
+    width = 0
+    height = 0
     for stream in data.get("streams") or []:
         ctype = stream.get("codec_type")
         codec = _normalize_codec(stream.get("codec_name"))
         if ctype == "video" and video_codec is None:
             video_codec = codec
+            try:
+                width = int(stream.get("width") or 0)
+                height = int(stream.get("height") or 0)
+            except (TypeError, ValueError):
+                width = height = 0
         elif ctype == "audio" and audio_codec is None:
             audio_codec = codec
 
     fmt = data.get("format", {}).get("format_name")
-    return MediaProbe(duration, video_codec, audio_codec, fmt)
+    return MediaProbe(duration, video_codec, audio_codec, fmt, width, height)
 
 
 def _codecs_web_playable(probe: MediaProbe) -> bool:
@@ -264,6 +273,15 @@ def prepare_for_web_playback(src: Path, upload_id: str) -> PreparedVideo:
 
     final_probe = probe_media(out)
     duration = final_probe.duration_sec or probe.duration_sec
+
+    if settings.VIDEO_HLS_ENABLED:
+        try:
+            from src.services import video_hls_service
+
+            video_hls_service.generate_hls(out, upload_id, final_probe)
+        except Exception as exc:
+            logger.warning("HLS 切片生成失败，将仅使用 MP4 播放: %s", exc)
+
     return PreparedVideo(
         path=out,
         mime_type=_mime_for_path(out),

@@ -68,6 +68,15 @@
     return appendQueryParams("/api/videos/" + videoId + "/stream", params);
   }
 
+  function hlsUrl(videoId, accessV) {
+    const v = accessV != null ? accessV : pageAccessV();
+    const params = {};
+    const t = global.LabAPI && global.LabAPI.getToken();
+    if (t) params.token = t;
+    if (v) params.v = v;
+    return appendQueryParams("/api/videos/" + videoId + "/hls/master.m3u8", params);
+  }
+
   function coverUrl(url, accessV) {
     if (!url) return "";
     const accessToken = accessV != null ? accessV : pageAccessV();
@@ -237,6 +246,7 @@
     formatDuration,
     formatViews,
     streamUrl,
+    hlsUrl,
     coverUrl,
     coverImgHtml,
     recCoverHtml,

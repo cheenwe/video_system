@@ -52,6 +52,7 @@
   <script src="js/api.js"></script>
   <script src="js/site-branding.js"></script>
   <script src="js/video-hub.js"></script>
+  <script src="js/hls.min.js"></script>
   <script src="js/video-player.js"></script>
   <script src="js/video-comments.js"></script>
   <script src="js/video-interactions.js"></script>
@@ -199,8 +200,11 @@
         renderLoginBox(v.play_block_reason);
       } else {
         const streamSrc = VideoHub.streamUrl(v.id, accessToken);
+        const hlsSrc = v.hls_url ? VideoHub.hlsUrl(v.id, accessToken) : null;
         const poster = v.cover_url ? VideoHub.coverUrl(v.cover_url, accessToken) : "";
-        VideoPlayer.mount(document.getElementById("playerArea"), streamSrc, {
+        VideoPlayer.mount(document.getElementById("playerArea"), {
+          mp4Src: streamSrc,
+          hlsSrc: hlsSrc,
           poster: poster,
           onPlay: recordViewOnce,
         });

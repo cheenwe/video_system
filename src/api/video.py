@@ -3,16 +3,20 @@ from __future__ import annotations
 
 from typing import Optional
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from src.core.database import get_db
+from src.core.video_streaming import rewrite_hls_playlist
 from src.core.deps import get_client_ip, get_current_user, get_optional_user, get_request_id
 from src.core.exceptions import BizError, ok
 from src.models.user import User
 from src.schemas.video import VideoCreateBody, VideoReplaceBody, VideoShareCreateBody, VideoUpdateBody, VideoUploadInitBody
-from src.services import video_interaction_service, video_cover_service, video_service, video_taxonomy_service, video_upload_service
+from src.services import video_hls_service, video_interaction_service, video_cover_service, video_service, video_taxonomy_service, video_upload_service
 from src.services.video_ref_service import (
     create_public_share_link,
     encode_video_ref,
@@ -23,6 +27,18 @@ from src.services.video_ref_service import (
 from src.services.log_service import log_action
 
 router = APIRouter(tags=["视频"])
+
+
+def _hls_auth_query(request: Request, access_v: str | None) -> str:
+    from src.core.deps import extract_token
+
+    parts: dict[str, str] = {}
+    token = extract_token(request, request.headers.get("Authorization"))
+    if token:
+        parts["token"] = token
+    if access_v:
+        parts["v"] = access_v
+    return urlencode(parts)
 
 
 @router.get("/api/videos/config")
@@ -290,6 +306,45 @@ def api_video_stream(
     if not path.is_file():
         raise BizError("视频文件不存在", 404)
     return video_service.build_stream_response(video, path, request)
+
+
+@router.get("/api/videos/{video_id}/hls/{asset_path:path}")
+@router.head("/api/videos/{video_id}/hls/{asset_path:path}")
+def api_video_hls(
+    video_id: int,
+    asset_path: str,
+    request: Request,
+    v: str | None = Query(None, max_length=512),
+    db: Session = Depends(get_db),
+    me: Optional[User] = Depends(get_optional_user),
+):
+    access = resolve_access_token(db, v) if v else None
+    if access and access.video_id != video_id:
+        raise BizError("访问令牌与视频不匹配", 403)
+    video = video_service.get_video(db, video_id)
+    video_service.assert_can_play(video, me, access)
+    if not video_hls_service.has_hls(video):
+        raise BizError("HLS 播放资源不存在", 404)
+    upload_id = video_hls_service.storage_key(video)
+    asset = video_hls_service.resolve_hls_asset(upload_id, asset_path)
+    media = video_hls_service.media_type_for_asset(asset)
+    auth_q = _hls_auth_query(request, v)
+
+    if asset.suffix.lower() == ".m3u8":
+        body = rewrite_hls_playlist(asset.read_text(encoding="utf-8"), video_id, auth_q)
+        headers = {
+            "Cache-Control": "private, max-age=60",
+            "Content-Disposition": "inline",
+        }
+        if request.method == "HEAD":
+            return Response(status_code=200, headers=headers, media_type=media)
+        return Response(content=body, media_type=media, headers=headers)
+
+    headers = {"Cache-Control": "private, max-age=86400", "Content-Disposition": "inline"}
+    if request.method == "HEAD":
+        headers["Content-Length"] = str(asset.stat().st_size)
+        return Response(status_code=200, headers=headers, media_type=media)
+    return FileResponse(str(asset), media_type=media, headers=headers)
 
 
 @router.put("/api/videos/{video_id}")

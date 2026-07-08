@@ -57,6 +57,24 @@ def _base_headers(media_type: str, file_size: int) -> dict[str, str]:
     }
 
 
+def rewrite_hls_playlist(content: str, video_id: int, query: str) -> str:
+    """将 m3u8 内相对 URI 改写为带鉴权参数的 API 地址。"""
+    q = query.strip("&")
+    suffix = ("?" + q) if q else ""
+    out: list[str] = []
+    for line in content.splitlines():
+        raw = line.strip()
+        if not raw or raw.startswith("#"):
+            out.append(line)
+            continue
+        if raw.startswith("http://") or raw.startswith("https://"):
+            out.append(line)
+            continue
+        uri = raw.split("?", 1)[0]
+        out.append(f"/api/videos/{video_id}/hls/{uri}{suffix}")
+    return "\n".join(out) + "\n"
+
+
 def build_video_stream_response(request: Request, path: Path, media_type: str) -> Response:
     """按 Range 返回 206 分块或 200 全量流，支持 HEAD。"""
     st = path.stat()

@@ -266,6 +266,7 @@ def replace_video_file(
 
     prepared = video_transcode_service.prepare_for_web_playback(new_path, upload_id)
     old_path = video_abs_path(video)
+    old_hls_key = video.file_path
     rel_path = str(prepared.path.relative_to(settings.upload_root_path)).replace("\\", "/")
 
     video.file_path = rel_path
@@ -286,6 +287,12 @@ def replace_video_file(
             old_path.unlink()
         except OSError:
             pass
+    from src.services import video_hls_service
+
+    old_key = video_hls_service.storage_key_from_path(old_hls_key)
+    new_key = video_hls_service.storage_key_from_path(rel_path)
+    if old_key != new_key:
+        video_hls_service.delete_hls(old_key)
     return video
 
 

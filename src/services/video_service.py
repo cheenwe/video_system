@@ -174,6 +174,12 @@ def _serialize_video(
     from src.services import video_interaction_service
 
     flags = video_interaction_service.user_flags(db, video.id, user.id if user else None)
+    hls_url = None
+    if can_play:
+        from src.services import video_hls_service
+
+        if video_hls_service.has_hls(video):
+            hls_url = f"/api/videos/{video.id}/hls/master.m3u8"
     return {
         "id": video.id,
         "ref": encode_video_ref(video.id),
@@ -198,6 +204,7 @@ def _serialize_video(
         "created_at": created,
         "can_play": can_play,
         "play_url": f"/api/videos/{video.id}/stream" if can_play else None,
+        "hls_url": hls_url,
         "cover_url": _cover_url(video),
         "require_login": not can_play and video.visibility == "private",
         "can_manage": can_manage_video(video, user) if user else False,
@@ -265,12 +272,14 @@ def update_video(db: Session, video_id: int, data: dict, user: User) -> Video:
 def delete_video(db: Session, video_id: int, user: User) -> None:
     v = get_video(db, video_id)
     assert_can_manage_video(v, user)
-    from src.services import video_cover_service
+    from src.services import video_cover_service, video_hls_service
 
+    hls_key = video_hls_service.storage_key(v)
     video_cover_service.delete_cover_file(v)
     path = video_abs_path(v)
     db.delete(v)
     db.commit()
+    video_hls_service.delete_hls(hls_key)
     if path.is_file():
         try:
             path.unlink()

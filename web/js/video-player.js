@@ -1,5 +1,5 @@
 /**
- * 渐进式 MP4 播放器：弱网边下边播，显示缓冲进度与状态。
+ * 视频播放器：优先 HLS 自适应（hls.js），回退 MP4 Range 渐进播放；弱网缓冲提示。
  */
 (function (global) {
   function esc(s) {
@@ -19,14 +19,20 @@
     }
   }
 
+  function canNativeHls() {
+    const v = document.createElement("video");
+    return !!(v.canPlayType && v.canPlayType("application/vnd.apple.mpegurl"));
+  }
+
   /**
    * @param {HTMLElement} container
-   * @param {string} src  流地址（含 token / v 参数）
-   * @param {{ onPlay?: function, poster?: string }} [opts]
+   * @param {{ mp4Src: string, hlsSrc?: string|null, poster?: string, onPlay?: function }} opts
    */
-  function mount(container, src, opts) {
+  function mount(container, opts) {
     opts = opts || {};
-    if (!container || !src) return null;
+    const mp4Src = opts.mp4Src || opts.src || "";
+    const hlsSrc = opts.hlsSrc || null;
+    if (!container || !mp4Src) return null;
 
     container.innerHTML =
       '<div class="video-player-shell">' +
@@ -41,19 +47,22 @@
       '  <div class="video-player-buffer-track" aria-hidden="true">' +
       '    <div class="video-player-buffer-bar"></div>' +
       "  </div>" +
+      '  <p class="video-player-mode muted" style="font-size:12px;margin:8px 0 0;"></p>' +
       '  <p class="video-player-error" hidden></p>' +
       "</div>";
 
-    const shell = container.querySelector(".video-player-shell");
     const video = container.querySelector(".video-player-el");
     const overlay = container.querySelector(".video-player-overlay");
     const hint = container.querySelector(".video-player-hint");
     const bar = container.querySelector(".video-player-buffer-bar");
     const errEl = container.querySelector(".video-player-error");
+    const modeEl = container.querySelector(".video-player-mode");
     if (!video) return null;
 
     let playHooked = false;
     let stalledTimer = null;
+    let hlsInstance = null;
+    let usingHls = false;
 
     function setOverlay(show, text) {
       if (!overlay) return;
@@ -86,7 +95,81 @@
       if (typeof opts.onPlay === "function") opts.onPlay();
     }
 
-    video.src = src;
+    function destroyHls() {
+      if (hlsInstance) {
+        try {
+          hlsInstance.destroy();
+        } catch (_) {}
+        hlsInstance = null;
+      }
+    }
+
+    function setMode(label) {
+      if (modeEl) modeEl.textContent = label;
+    }
+
+    function attachMp4() {
+      destroyHls();
+      usingHls = false;
+      video.src = mp4Src;
+      setMode("播放模式：MP4 渐进加载");
+    }
+
+    function attachHlsJs(url) {
+      const Hls = global.Hls;
+      if (!Hls || !Hls.isSupported()) return false;
+      destroyHls();
+      usingHls = true;
+      hlsInstance = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        startLevel: -1,
+        capLevelToPlayerSize: true,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 120,
+        maxBufferHole: 0.5,
+        fragLoadingTimeOut: 20000,
+        manifestLoadingTimeOut: 15000,
+      });
+      hlsInstance.loadSource(url);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, function () {
+        setMode("播放模式：HLS 自适应（根据网速自动切换清晰度）");
+      });
+      hlsInstance.on(Hls.Events.ERROR, function (_evt, data) {
+        if (!data || !data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          try {
+            hlsInstance.startLoad();
+            setOverlay(true, "网络中断，正在重连…");
+            return;
+          } catch (_) {}
+        }
+        destroyHls();
+        attachMp4();
+        setOverlay(true, "HLS 加载失败，已切换 MP4…");
+        video.load();
+      });
+      return true;
+    }
+
+    function attachNativeHls(url) {
+      destroyHls();
+      usingHls = true;
+      video.src = url;
+      setMode("播放模式：HLS（Safari 原生）");
+    }
+
+    function startPlaybackSource() {
+      if (hlsSrc) {
+        if (global.Hls && global.Hls.isSupported() && attachHlsJs(hlsSrc)) return;
+        if (canNativeHls()) {
+          attachNativeHls(hlsSrc);
+          return;
+        }
+      }
+      attachMp4();
+    }
 
     video.addEventListener("loadedmetadata", updateBar);
     video.addEventListener("progress", updateBar);
@@ -103,13 +186,13 @@
     });
 
     video.addEventListener("waiting", function () {
-      setOverlay(true, "缓冲中…");
+      setOverlay(true, usingHls ? "缓冲中…（HLS 正在加载切片）" : "缓冲中…");
       clearStallTimer();
       stalledTimer = setTimeout(function () {
         if (video.readyState < 3 && !video.paused) {
           setOverlay(true, "网络较慢，正在加载…");
         }
-      }, 2500);
+      }, 2000);
     });
 
     video.addEventListener("stalled", function () {
@@ -123,6 +206,13 @@
     });
 
     video.addEventListener("error", function () {
+      if (usingHls && mp4Src) {
+        destroyHls();
+        attachMp4();
+        video.load();
+        setOverlay(true, "已切换 MP4，请点击播放");
+        return;
+      }
       clearStallTimer();
       const code = video.error && video.error.code;
       const msg =
@@ -133,13 +223,22 @@
     });
 
     video.addEventListener("click", function () {
-      if (video.error) {
+      if (video.error && errEl && !errEl.hidden) {
+        errEl.hidden = true;
+        startPlaybackSource();
         video.load();
-        if (errEl) errEl.hidden = true;
       }
     });
 
-    return { video: video, shell: shell };
+    startPlaybackSource();
+
+    return {
+      video: video,
+      destroy: function () {
+        clearStallTimer();
+        destroyHls();
+      },
+    };
   }
 
   global.VideoPlayer = { mount: mount };

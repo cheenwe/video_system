@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     VIDEO_TRANSCODE_CRF: int = Field(default=23, ge=18, le=32)
     VIDEO_TRANSCODE_TIMEOUT_SEC: int = Field(default=3600, ge=60, le=7200)
 
+    # 上传后生成 HLS 切片（弱网自适应播放）；需 ffmpeg
+    VIDEO_HLS_ENABLED: bool = True
+    # 高清源额外生成 480p 档位（双码率自适应）
+    VIDEO_HLS_ABR: bool = True
+    VIDEO_HLS_SEGMENT_SEC: int = Field(default=6, ge=2, le=15)
+    VIDEO_HLS_TIMEOUT_SEC: int = Field(default=7200, ge=120, le=14400)
+
     SECRET_KEY: str = "app-platform-change-this-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_DAYS: int = 7
@@ -166,6 +173,10 @@ class Settings(BaseSettings):
     def resolve_upload_file(self, relative: str) -> Path:
         """解析相对路径为 UPLOAD_ROOT 下的本地绝对路径。"""
         return resolve_under_upload_root(self.upload_root_path, relative)
+
+    @property
+    def video_hls_root_path(self) -> Path:
+        return self.upload_root_path / "videos" / "hls"
 
     @property
     def video_files_root_path(self) -> Path:

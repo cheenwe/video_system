@@ -12,6 +12,7 @@ UPLOAD_SUBDIRS = (
     "videos/chunks",
     "videos/covers",
     "videos/covers/pending",
+    "videos/hls",
     "user_avatars",
     "site_branding",
     "db_backups",
