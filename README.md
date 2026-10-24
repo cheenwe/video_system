@@ -166,6 +166,16 @@ python -m uvicorn src.main:app --host 0.0.0.0 --port 8808 --reload
 播放器会自动降档、有限重试，并提供「流畅优先」一键锁最低档。
 参数、限速验收步骤与已知代价见 **[docs/weak-network-playback.md](docs/weak-network-playback.md)**。
 
+可选的增强项（默认关闭或不启用，行为不变）：
+
+| 开关 | 作用 |
+| --- | --- |
+| `VIDEO_HLS_SEGMENT_FORMAT=fmp4` | fMP4/CMAF 切片，可按字节范围取片段 |
+| `VIDEO_STORAGE_BACKEND=s3` | HLS 分片鉴权通过后 302 到短时效预签名 URL，流量下沉 OSS/CDN |
+| `VIDEO_SW_CACHE_ENABLED=true` | Service Worker 缓存 HLS 媒体分片（同源 + 带鉴权参数） |
+| `VIDEO_QOE_ENABLED=true` | 采集播放质量，`GET /api/videos/qoe/summary` 看报表 |
+| `VIDEO_HLS_HOUSEKEEPING_ENABLED=true` | 周期巡检缺切片的视频并自动补，`GET /api/videos/hls/health` 看状态 |
+
 存量视频补切片：
 
 ```bash
