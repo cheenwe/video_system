@@ -127,3 +127,32 @@ class VideoUploadSession(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class VideoQoEEvent(Base):
+    """播放质量事件（弱网优化的度量数据）。
+
+    一条记录对应一次播放会话的关键节点：首次可播放、发生回退、或离页汇总。
+    字段与前端 `video-player.js` 的 `getQoe()` 一致。
+    """
+
+    __tablename__ = "video_qoe_events"
+
+    id: Mapped[int] = mapped_column(PK_TYPE, primary_key=True, autoincrement=True)
+    video_id: Mapped[int] = mapped_column(FK_TYPE, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
+    # 起播耗时（ms）
+    ttff_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 卡顿次数与累计时长
+    waiting_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    waiting_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 播放档位：-1 表示自动/未知
+    level: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    auto_level: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    manual: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 回退原因（空表示未回退）：mp4_fallback / HLS 重连失败 / HLS 错误:…
+    fallback_reason: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    downgrades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 是否命中 Service Worker 缓存
+    sw_cached: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)

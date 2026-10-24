@@ -52,6 +52,34 @@
     return !!(v.canPlayType && v.canPlayType("application/vnd.apple.mpegurl"));
   }
 
+  // ---------- Service Worker 片段缓存 ----------
+  var swState = { registered: false, enabled: false };
+
+  function registerServiceWorker(enabled) {
+    if (!("serviceWorker" in navigator)) return;
+    swState.enabled = !!enabled;
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(
+      function () {
+        swState.registered = true;
+        // 把服务端开关同步给 SW；关闭时它会清空缓存并透传
+        navigator.serviceWorker.ready.then(function (reg) {
+          if (reg.active) {
+            reg.active.postMessage({ type: "set-enabled", enabled: swState.enabled });
+          }
+        });
+      },
+      function () {
+        /* SW 不可用不影响播放 */
+      }
+    );
+  }
+
+  function qoePayload() {
+    var base = snapshotQoe();
+    base.swCached = swState.registered && swState.enabled;
+    return base;
+  }
+
   function now() {
     return Date.now ? Date.now() : +new Date();
   }
@@ -88,6 +116,7 @@
       '    <button class="video-player-quality-smooth" type="button" title="锁定最低清晰度并停止自动升档">流畅优先</button>' +
       "  </div>" +
       '  <p class="video-player-mode muted" style="font-size:12px;margin:8px 0 0;"></p>' +
+      '  <div class="video-player-stats" aria-live="polite"></div>' +
       '  <p class="video-player-error" hidden></p>' +
       "</div>";
 
@@ -97,6 +126,7 @@
     const bar = container.querySelector(".video-player-buffer-bar");
     const errEl = container.querySelector(".video-player-error");
     const modeEl = container.querySelector(".video-player-mode");
+    const statsEl = container.querySelector(".video-player-stats");
     const qualityBox = container.querySelector(".video-player-quality");
     const qualitySel = container.querySelector(".video-player-quality-sel");
     const smoothBtn = container.querySelector(".video-player-quality-smooth");
@@ -169,6 +199,7 @@
 
     function snapshotQoe() {
       return {
+        swCached: swState.registered && swState.enabled,
         ttffMs: qoe.ttffMs,
         waitingCount: qoe.waitingCount,
         waitingMs: qoe.waitingMs,
@@ -200,6 +231,57 @@
 
     function setMode(label) {
       if (modeEl) modeEl.textContent = label;
+    }
+
+    // ---------- 实时可观测：码率 / 档位 / 缓冲健康 ----------
+    // 让「弱网时到底在播哪档、缓冲够不够」可见，而不是只有一句「缓冲中」。
+    var stats = { bytes: 0, since: 0 };
+    function fmtKbps(bps) {
+      if (!bps || bps <= 0) return "—";
+      if (bps >= 1000000) return (bps / 1000000).toFixed(1) + " Mbps";
+      return Math.round(bps / 1000) + " kbps";
+    }
+
+    function renderStats() {
+      if (!statsEl) return;
+      var elapsed = (now() - stats.since) / 1000;
+      var kbps = elapsed > 1 ? (stats.bytes * 8) / elapsed : 0;
+      var lvl = hlsInstance && hlsInstance.currentLevel >= 0 ? levelLabel(hlsInstance.currentLevel) : "自动";
+      var buf = bufferPercent(video);
+      var sw = swState.registered && swState.enabled ? "SW 缓存开" : "SW 缓存关";
+      statsEl.textContent =
+        "实测 " + fmtKbps(kbps) + " · 档位 " + lvl + " · 已缓冲 " + buf.toFixed(0) + "% · " + sw;
+      // 缓冲过低时高亮，便于现场判断是网络问题还是档位过高
+      statsEl.classList.toggle("is-low", buf < 10 && !video.paused);
+    }
+
+    // 用 PerformanceObserver 统计分片字节；不可用时退化为不显示实测码率
+    function watchTransfer() {
+      if (typeof PerformanceObserver !== "function") return;
+      try {
+        var obs = new PerformanceObserver(function (list) {
+          list.getEntries().forEach(function (e) {
+            if (e.name && e.name.indexOf("/hls/") >= 0 && e.encodedBodySize) {
+              stats.bytes += e.encodedBodySize;
+            }
+          });
+        });
+        obs.observe({ entryTypes: ["resource"] });
+      } catch (_) {}
+    }
+
+    var statsTimer = null;
+    function startStatsLoop() {
+      if (statsTimer) return;
+      watchTransfer();
+      stats.since = now();
+      statsTimer = setInterval(renderStats, 2000);
+    }
+    function stopStatsLoop() {
+      if (statsTimer) {
+        clearInterval(statsTimer);
+        statsTimer = null;
+      }
     }
 
     function attachMp4(reason) {
@@ -416,6 +498,7 @@
     video.addEventListener("play", function () {
       onPlayHook();
       if (video.preload === "metadata") video.preload = "auto";
+      startStatsLoop();
     });
 
     video.addEventListener("playing", function () {
@@ -494,10 +577,11 @@
       destroy: function () {
         clearStallTimer();
         clearNetRetry();
+        stopStatsLoop();
         destroyHls();
       },
     };
   }
 
-  global.VideoPlayer = { mount: mount };
+  global.VideoPlayer = { mount: mount, registerServiceWorker: registerServiceWorker };
 })(window);

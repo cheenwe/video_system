@@ -104,6 +104,61 @@ python scripts/backfill_hls.py             # 全量
 
 ## 5. P2 未做
 
+> 本节记录的 P2 项已全部落地，见 [§6](#6-p2-与后续已落地)；这里保留原始评估，
+> 便于回溯当初为什么把它们排在 P1 之后。
+
 - 对象存储 + CDN、fMP4/CMAF、Service Worker 片段缓存、多码率音频统一。
   前两项需要产品明确「跨地域分发」或「离线播放」诉求；后两项与隐私/配额强相关，
   建议在有多地域访问数据后再启动。
+
+---
+
+## 6. P2 与后续（已落地）
+
+| 项 | 落地位置 | 说明 |
+| --- | --- | --- |
+| 多码率音频统一 | `VIDEO_HLS_UNIFIED_AUDIO_KBPS` | 所有档位同一 AAC 码率（默认 128k），切档不再爆音 |
+| fMP4 / CMAF | `VIDEO_HLS_SEGMENT_FORMAT=fmp4` | `init.mp4` + `seg_NNN.m4s`，可按字节范围取片段；默认仍 mpegts（兼容性优先）。注意 `#EXT-X-MAP:URI=` 也必须改写，否则初始化段请求不带鉴权参数会 403 |
+| 对象存储 + CDN | `src/services/video_storage.py`、`src/core/s3_signer.py` | `VIDEO_STORAGE_BACKEND=s3` 后，HLS 分片改为**鉴权通过后 302 到短时效预签名 URL**；字节下沉 OSS/CDN，平台仍持鉴权。纯 Python SigV4，无 boto3 依赖 |
+| Service Worker 缓存 | `web/sw.js`、`web/js/hls-cache-policy.js` | 只缓存当前源、带鉴权参数的能力 URL、HLS 媒体分片；有条目/体积/时长上限；总开关 `VIDEO_SW_CACHE_ENABLED` |
+| QoE 闭环 | `src/services/video_qoe_service.py`、`GET /api/videos/qoe/summary` | TTFF、waiting 次数/时长、档位分布、回退率、SW 命中率；按视频拆分定位烂片 |
+| HLS 健康巡检 | `src/services/video_hls_housekeeping.py` | 周期扫描缺切片的 ready 视频并自动补切片；`GET /api/videos/hls/health` 报告、`POST /api/videos/hls/repair` 手动触发 |
+| 播放器可观测 | `web/js/video-player.js` 统计条 | 实时显示实测码率、当前档位、缓冲百分比、SW 缓存状态 |
+
+### 两个容易踩空的判定口径
+
+**1）QoE 上报字段两种命名都收。** 前端 JS 习惯 camelCase，后端 Python 习惯
+snake_case。`VideoQoEBody` 同时接受两者（`populate_by_name` + alias），因为
+只认一种写法时，拼错的字段会被 pydantic **静默忽略**，落库成一条全 0 的记录，
+报表看起来「播放很快」其实是没数据。别把这条兼容当作冗余删掉。
+
+**2）健康判定必须跟 master 对账。** 早期版本只要求「master 在 + 任一
+`stream_*` 目录有分片」，结果删掉两档的片子照样算健康，而 master 仍指向那两档，
+自动档切过去直接 404。现在逐条校验 master 声明的每个变体：playlist 存在、
+`#EXT-X-MAP` 的 `init.mp4` 存在、首尾分片存在（全量校验太慢，抽查首尾已能覆盖
+中断/清理导致的整段缺失）。对账逻辑钉在
+`src/tests/test_video_hls_housekeeping.py`。
+
+> 巡检线程**启动即扫一轮**，所以刚重启时看到的 `repair` 计数可能为 0 ——
+> 那是它已经先修完了，不是没生效。
+
+### 对象存储接入口径
+
+1. `VIDEO_STORAGE_BACKEND=s3` + `S3_*` 配置完整才会启用；**默认 local，行为不变**。
+2. 鉴权不旁路：`/api/videos/{id}/hls/...` 仍做完整权限校验，通过后才发
+   短时效（默认 300s）预签名 URL。私有视频不会被未授权访问。
+3. 上传侧：HLS 生成后后台同步到 OSS，失败只记日志、不影响本地播放。
+4. 对象未同步成功时 `resolve_asset` 自动回退本地下发，不会「配了 OSS 反而播不了」。
+
+### 预签名实现的验证方式
+
+`src/core/s3_signer.py` 是手写 SigV4，细节错了只会体现在 OSS 返回
+`SignatureDoesNotMatch`。因此测试里做了与 **botocore（真实实现）** 的交叉验证
+（`src/tests/test_s3_signer.py`，环境无 botocore 时自动跳过），四种组合
+（虚拟主机/路径式 × 不同 key）逐字符一致。
+
+### 仍未做
+
+- 多码率音频统一只统一了码率，未做「音频轨独立成组」的 fMP4 媒体分组。
+- Service Worker 未做离线「整片预取」（隐私与配额风险更高，需产品明确诉求）。
+- 巡检目前只补切片，不会清理「源文件已删除」的孤儿 HLS 目录。

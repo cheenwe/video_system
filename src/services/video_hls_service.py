@@ -254,6 +254,48 @@ def probe_bitrate(playlist: Path, max_samples: int) -> tuple[int, int]:
     return avg, peak
 
 
+def _audio_bitrate() -> str:
+    """所有档位共用的音频码率。
+
+    切档时音频参数不一致会产生可闻的爆音；统一后只剩视频分辨率变化。
+    """
+    return f"{settings.VIDEO_HLS_UNIFIED_AUDIO_KBPS}k"
+
+
+def _segment_ext() -> str:
+    return "m4s" if settings.VIDEO_HLS_SEGMENT_FORMAT == "fmp4" else "ts"
+
+
+def _hls_output_args(stream_dir: Path, playlist: Path, segment_sec: int) -> list[str]:
+    """HLS 输出参数；按配置选择 mpegts 或 fMP4(CMAF) 封装。
+
+    fMP4 用 `init.mp4` + `seg_NNN.m4s`，播放器可按字节范围取片段，
+    切档与 seek 都更快；代价是老浏览器（不支持 CMFA 的 hls.js 版本）不可用，
+    因此默认仍是 mpegts，由部署方按客户端情况切换。
+    """
+    ext = _segment_ext()
+    args = [
+        "-hls_time",
+        str(segment_sec),
+        "-hls_playlist_type",
+        "vod",
+        "-hls_segment_filename",
+        str(stream_dir / f"seg_%03d.{ext}"),
+        "-f",
+        "hls",
+        str(playlist),
+    ]
+    if ext == "m4s":
+        args = [
+            "-hls_segment_type",
+            "fmp4",
+            "-hls_fmp4_init_filename",
+            "init.mp4",
+            *args,
+        ]
+    return args
+
+
 def _gop_args(segment_sec: int, fps: float) -> list[str]:
     """关键帧与切片时长对齐的参数。
 
@@ -305,22 +347,10 @@ def _hls_copy_stream(
             ]
         )
     if has_audio:
-        cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+        cmd.extend(["-c:a", "aac", "-b:a", _audio_bitrate()])
     else:
         cmd.append("-an")
-    cmd.extend(
-        [
-            "-hls_time",
-            str(segment_sec),
-            "-hls_playlist_type",
-            "vod",
-            "-hls_segment_filename",
-            str(stream_dir / "seg_%03d.ts"),
-            "-f",
-            "hls",
-            str(playlist),
-        ]
-    )
+    cmd.extend(_hls_output_args(stream_dir, playlist, segment_sec))
     _run_ffmpeg(cmd, "主档位")
     if not playlist.is_file():
         raise BizError("HLS 主档位未生成 playlist")
@@ -365,22 +395,10 @@ def _hls_transcode_stream(
         *_gop_args(segment_sec, fps),
     ]
     if has_audio:
-        cmd.extend(["-c:a", "aac", "-b:a", "96k"])
+        cmd.extend(["-c:a", "aac", "-b:a", _audio_bitrate()])
     else:
         cmd.append("-an")
-    cmd.extend(
-        [
-            "-hls_time",
-            str(segment_sec),
-            "-hls_playlist_type",
-            "vod",
-            "-hls_segment_filename",
-            str(stream_dir / "seg_%03d.ts"),
-            "-f",
-            "hls",
-            str(playlist),
-        ]
-    )
+    cmd.extend(_hls_output_args(stream_dir, playlist, segment_sec))
     _run_ffmpeg(cmd, f"{height}p")
     w = max(2, int(height * 16 / 9)) if height else 0
     return w, height
@@ -491,6 +509,15 @@ def generate_hls(src: Path, upload_id: str, probe: MediaProbe | None = None) -> 
         len(variants),
         [r.name for r in ladder] or "仅主档",
     )
+
+    # 配置了对象存储时后台同步；失败不影响本地播放（下次生成会重试）
+    if settings.VIDEO_HLS_SYNC_STORAGE:
+        try:
+            from src.services import video_storage
+
+            video_storage.sync_hls_async(upload_id, out_root)
+        except Exception as exc:  # 同步线程启动失败不应让出片失败
+            logger.warning("HLS 对象存储同步未启动 upload_id=%s: %s", upload_id, exc)
     return master
 
 
@@ -513,4 +540,9 @@ def media_type_for_asset(path: Path) -> str:
         return _M3U8_CT
     if ext == ".ts":
         return _TS_CT
+    # fMP4(CMAF)：init.mp4 是初始化段，.m4s 是媒体段
+    if ext == ".mp4":
+        return "video/mp4"
+    if ext == ".m4s":
+        return "video/iso.segment"
     return "application/octet-stream"

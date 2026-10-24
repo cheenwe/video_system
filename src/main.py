@@ -19,6 +19,7 @@ from src.core.local_storage import log_storage_layout
 from src.core.redis_client import close_redis, ping_redis
 from src.core.security_middleware import SecurityFilterMiddleware
 from src.jobs.backup_scheduler import shutdown_backup_scheduler, start_backup_scheduler
+from src.services.video_hls_housekeeping import start_housekeeping, stop_housekeeping
 
 
 @asynccontextmanager
@@ -48,7 +49,9 @@ async def lifespan(app: FastAPI):
         settings.PORT,
     )
     start_backup_scheduler()
+    start_housekeeping()
     yield
+    stop_housekeeping()
     shutdown_backup_scheduler()
     close_redis()
     logger.info("应用关闭")

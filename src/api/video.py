@@ -6,7 +6,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
@@ -16,8 +16,24 @@ from src.core.video_streaming import rewrite_hls_playlist
 from src.core.deps import get_client_ip, get_current_user, get_optional_user, get_request_id
 from src.core.exceptions import BizError, ok
 from src.models.user import User
-from src.schemas.video import VideoCreateBody, VideoReplaceBody, VideoShareCreateBody, VideoUpdateBody, VideoUploadInitBody
-from src.services import video_hls_service, video_interaction_service, video_cover_service, video_service, video_taxonomy_service, video_upload_service
+from src.schemas.video import (
+    VideoCreateBody,
+    VideoQoEBody,
+    VideoReplaceBody,
+    VideoShareCreateBody,
+    VideoUpdateBody,
+    VideoUploadInitBody,
+)
+from src.services import (
+    video_cover_service,
+    video_hls_service,
+    video_interaction_service,
+    video_hls_housekeeping,
+    video_qoe_service,
+    video_service,
+    video_taxonomy_service,
+    video_upload_service,
+)
 from src.services.video_ref_service import (
     create_public_share_link,
     encode_video_ref,
@@ -247,6 +263,42 @@ def api_record_video_view(
     return ok({"view_count": view_count})
 
 
+@router.post("/api/videos/{video_id}/qoe")
+def api_record_video_qoe(
+    video_id: int,
+    body: VideoQoEBody,
+    v: str | None = Query(None, max_length=512),
+    db: Session = Depends(get_db),
+    me: Optional[User] = Depends(get_optional_user),
+):
+    """播放质量上报（TTFF / 卡顿 / 档位 / 回退原因）。
+
+    与 /view 同样做播放权限校验：只有被允许看这条视频的会话才计入统计，
+    避免把未授权的探测数据混进报表。采集失败不影响播放（前端已 try/catch）。
+    """
+    video_qoe_service.assert_enabled()
+    access = resolve_access_token(db, v) if v else None
+    if access and access.video_id != video_id:
+        raise BizError("访问令牌与视频不匹配", 403)
+    video = video_service.get_video(db, video_id)
+    video_service.assert_can_play(video, me, access)
+    video_qoe_service.record_event(
+        db,
+        video,
+        ttff_ms=body.ttff_ms,
+        waiting_count=body.waiting_count,
+        waiting_ms=body.waiting_ms,
+        level=body.level,
+        auto_level=body.auto_level,
+        manual=body.manual,
+        fallback_reason=body.fallback_reason,
+        downgrades=body.downgrades,
+        sw_cached=body.sw_cached,
+        elapsed_ms=body.elapsed_ms,
+    )
+    return ok(None, msg="已记录")
+
+
 @router.post("/api/videos/{video_id}/like")
 def api_toggle_video_like(
     video_id: int,
@@ -254,6 +306,56 @@ def api_toggle_video_like(
     me: User = Depends(get_current_user),
 ):
     return ok(video_interaction_service.toggle_like(db, video_id, me))
+
+
+@router.get("/api/videos/qoe/summary")
+def api_video_qoe_summary(
+    days: int = Query(7, ge=1, le=90),
+    video_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    """播放质量汇总（管理端）。
+
+    用于验证弱网优化的实际效果：起播耗时、卡顿次数、档位分布、回退率、
+    Service Worker 命中率。
+    """
+    if (me.role or "").lower() != "admin":
+        raise BizError("需要管理员权限", 403)
+    return ok(
+        {
+            "overall": video_qoe_service.summary(db, days=days, video_id=video_id),
+            "per_video": video_qoe_service.per_video_summary(db, days=days),
+        }
+    )
+
+
+@router.get("/api/videos/hls/health")
+def api_video_hls_health(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    """HLS 健康报告：多少 ready 视频缺切片（不修复，只报告）。"""
+    if (me.role or "").lower() != "admin":
+        raise BizError("需要管理员权限", 403)
+    return ok(
+        {
+            "health": video_hls_housekeeping.hls_health_report(db, limit=limit),
+            "housekeeping": video_hls_housekeeping.housekeeping_status(),
+        }
+    )
+
+
+@router.post("/api/videos/hls/repair")
+def api_video_hls_repair(
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    """手动触发一轮补切片（立即执行，不等巡检周期）。"""
+    if (me.role or "").lower() != "admin":
+        raise BizError("需要管理员权限", 403)
+    return ok(video_hls_housekeeping.scan_now(), msg="已执行一轮补切片")
 
 
 @router.post("/api/videos/{video_id}/favorite")
@@ -347,9 +449,8 @@ def api_video_hls(
             return Response(status_code=200, headers=headers, media_type=media)
         return Response(content=body, media_type=media, headers=headers)
 
-    # .ts 切片是内容寻址的（文件名不变、内容不变），且 URL 已带鉴权参数，
-    # 因此可以长缓存：弱网下重复切片不再回源，断网重连后也无需重新请求。
-    # 私有缓存（private）确保共享代理不缓存他人可访问的隐私视频。
+    # .ts/.m4s/init.mp4 等媒体分片：内容寻址（文件名不变、内容不变），
+    # URL 已带鉴权参数，因此可以长缓存；private 确保共享代理不缓存隐私视频。
     headers = {
         "Cache-Control": f"private, max-age={settings.VIDEO_HLS_SEGMENT_CACHE_SEC}, immutable",
         "Content-Disposition": "inline",
@@ -357,6 +458,14 @@ def api_video_hls(
     if request.method == "HEAD":
         headers["Content-Length"] = str(asset.stat().st_size)
         return Response(status_code=200, headers=headers, media_type=media)
+
+    # 配置了对象存储时 302 到短时效预签名 URL：字节下发转移到 OSS/CDN，
+    # 平台仍持有鉴权（上面已经校验过），不会被绕过。
+    from src.services import video_storage
+
+    resolved = video_storage.resolve_asset(upload_id, asset_path, asset)
+    if resolved.redirect_url:
+        return RedirectResponse(resolved.redirect_url, status_code=302, headers=headers)
     return FileResponse(str(asset), media_type=media, headers=headers)
 
 

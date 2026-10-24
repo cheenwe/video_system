@@ -115,6 +115,38 @@ class Settings(BaseSettings):
     VIDEO_HLS_PROBE_SAMPLE_SEGMENTS: int = Field(default=5, ge=1, le=20)
     # .ts 切片缓存时长（秒）；切片内容寻址且 URL 带鉴权参数，可长缓存
     VIDEO_HLS_SEGMENT_CACHE_SEC: int = Field(default=86400, ge=60, le=604800)
+    # 分段封装格式：mpegts（默认，兼容性最好）| fmp4（CMAF，切档/seek 更快、请求数更少）
+    VIDEO_HLS_SEGMENT_FORMAT: str = "mpegts"
+    # 多码率音频统一：所有档位用同一音频码率，减少切档时的爆音
+    VIDEO_HLS_UNIFIED_AUDIO_KBPS: int = Field(default=128, ge=32, le=256)
+
+    # ---------- 对象存储 / CDN（P2） ----------
+    # 视频与 HLS 分片的下发后端：local（默认，应用代理）| s3（OSS/COS/MinIO 等 S3 兼容）
+    VIDEO_STORAGE_BACKEND: str = "local"
+    # CDN/自定义域名；配置后优先生成带该域名的签名 URL（仍需 S3_* 才能签名）
+    VIDEO_CDN_BASE_URL: str = ""
+    # 预签名 URL 时效（秒）；短时效 + 平台侧鉴权，避免绕过权限
+    VIDEO_SIGNED_URL_TTL_SEC: int = Field(default=300, ge=30, le=3600)
+    S3_ENDPOINT: str = ""
+    S3_BUCKET: str = ""
+    S3_REGION: str = "us-east-1"
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
+    # 对象键前缀
+    S3_PREFIX: str = "video-hls"
+    # 路径式寻址（MinIO/部分自建需要）；默认虚拟主机式
+    S3_PATH_STYLE: bool = False
+    # HLS 生成后异步同步到对象存储
+    VIDEO_HLS_SYNC_STORAGE: bool = True
+    # Service Worker 片段缓存总开关（默认开；关闭后透传不缓存）
+    VIDEO_SW_CACHE_ENABLED: bool = True
+    # 播放质量（QoE）采集与上报总开关
+    VIDEO_QOE_ENABLED: bool = True
+    # HLS 健康巡检：周期扫描缺切片的 ready 视频并自动补切片
+    VIDEO_HLS_HOUSEKEEPING_ENABLED: bool = True
+    VIDEO_HLS_HOUSEKEEPING_INTERVAL_SEC: int = Field(default=900, ge=60, le=86400)
+    # 单轮最多补几条，避免和上传转码抢 IO
+    VIDEO_HLS_HOUSEKEEPING_BATCH: int = Field(default=3, ge=1, le=20)
     VIDEO_HLS_TIMEOUT_SEC: int = Field(default=7200, ge=120, le=14400)
 
     # MP4 Range 回退的单次分块大小（KB）；弱网调小可降低单次等待

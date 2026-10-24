@@ -29,6 +29,10 @@ def hub_config() -> dict:
         "chunk_size_mb": settings.VIDEO_CHUNK_SIZE_MB,
         "cover_width": video_cover_service.COVER_WIDTH,
         "cover_height": video_cover_service.COVER_HEIGHT,
+        # 播放侧弱网相关开关（HLS 档位 / Service Worker 缓存）
+        "hls_abr": settings.VIDEO_HLS_ABR and settings.VIDEO_HLS_ABR_LADDER,
+        "segment_cache": settings.VIDEO_HLS_SEGMENT_CACHE_SEC,
+        "sw_cache": settings.VIDEO_SW_CACHE_ENABLED,
     }
 
 

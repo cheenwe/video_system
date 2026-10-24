@@ -193,6 +193,29 @@
           }
         } catch (_) {}
       }
+
+      // 播放质量上报：节流到关键节点（首次可播放、回退、离页），
+      // 不做高频打点，避免反过来拖慢弱网播放。
+      let qoeReported = false;
+      async function reportQoe(videoId, q, force) {
+        if (!q || (!force && qoeReported)) return;
+        if (!q.ttffMs && !q.fallbackReason) return;
+        qoeReported = true;
+        try {
+          await LabAPI.post("/api/videos/" + videoId + "/qoe?v=" + encodeURIComponent(accessToken), {
+            ttff_ms: Math.round(q.ttffMs || 0),
+            waiting_count: q.waitingCount || 0,
+            waiting_ms: Math.round(q.waitingMs || 0),
+            level: q.level == null ? -1 : q.level,
+            auto_level: q.autoLevel == null ? -1 : q.autoLevel,
+            manual: !!q.manual,
+            fallback_reason: q.fallbackReason || "",
+            downgrades: q.downgrades || 0,
+            sw_cached: !!q.swCached,
+            elapsed_ms: Math.round(q.elapsedMs || 0)
+          });
+        } catch (_) {}
+      }
       document.getElementById("vDesc").textContent = v.description || "（暂无简介）";
       renderTags(v);
 
@@ -202,19 +225,26 @@
         const streamSrc = VideoHub.streamUrl(v.id, accessToken);
         const hlsSrc = v.hls_url ? VideoHub.hlsUrl(v.id, accessToken) : null;
         const poster = v.cover_url ? VideoHub.coverUrl(v.cover_url, accessToken) : "";
+        // Service Worker 片段缓存：默认开，服务端可一键关闭。
+        // 只缓存带鉴权参数的 HLS 媒体分片（见 web/js/hls-cache-policy.js）。
+        fetch("/api/videos/config")
+          .then(function (r) { return r.json(); })
+          .then(function (c) {
+            if (c && c.data && c.data.sw_cache) VideoPlayer.registerServiceWorker(true);
+          })
+          .catch(function () {});
         const player = VideoPlayer.mount(document.getElementById("playerArea"), {
           mp4Src: streamSrc,
           hlsSrc: hlsSrc,
           poster: poster,
           onPlay: recordViewOnce,
-          // QoE 采集：TTFF / waiting 次数与时长 / 当前档位 / 回退原因。
-          // 目前只做本地留存与事件派发，接入分析后端时在这里上报即可。
+          // QoE 采集：TTFF / waiting / 档位 / 回退原因，本地留存并上报，
+          // 用于弱网优化的效果度量（docs/weak-network-playback.md）。
           onQoe: function (q) {
             try {
               window.__videoQoE = q;
               window.dispatchEvent(new CustomEvent("videoqoe", { detail: q }));
-              if (q.fallbackReason) console.info("[videoqoe] 回退:", q.fallbackReason, q);
-              else if (q.ttffMs) console.info("[videoqoe] ttff=" + q.ttffMs + "ms", q);
+              reportQoe(v.id, q);
             } catch (_) {}
           },
         });
@@ -222,7 +252,7 @@
           window.addEventListener("beforeunload", function () {
             try {
               const q = player.getQoe && player.getQoe();
-              if (q) console.info("[videoqoe] final", q);
+              if (q) reportQoe(v.id, q, true);
             } catch (_) {}
           });
         }

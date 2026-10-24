@@ -82,3 +82,24 @@ class VideoOut(BaseModel):
     play_url: Optional[str] = None
     cover_url: Optional[str] = None
     can_play: bool = True
+
+
+class VideoQoEBody(BaseModel):
+    """播放质量上报体；字段与前端 getQoe() 对应。
+
+    JS 侧习惯 camelCase，Python 侧习惯 snake_case，两者都接受：只认一种写法时
+    一旦拼错字段名会被静默忽略，落库成一条全 0 的记录，报表就失真了。
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    ttff_ms: int = Field(default=0, alias="ttffMs", ge=0, le=600_000)
+    waiting_count: int = Field(default=0, alias="waitingCount", ge=0, le=100_000)
+    waiting_ms: int = Field(default=0, alias="waitingMs", ge=0, le=3_600_000)
+    level: int = Field(default=-1, ge=-1, le=32)
+    auto_level: int = Field(default=-1, alias="autoLevel", ge=-1, le=32)
+    manual: bool = False
+    fallback_reason: str = Field(default="", alias="fallbackReason", max_length=120)
+    downgrades: int = Field(default=0, ge=0, le=100)
+    sw_cached: bool = Field(default=False, alias="swCached")
+    elapsed_ms: int = Field(default=0, alias="elapsedMs", ge=0, le=86_400_000)

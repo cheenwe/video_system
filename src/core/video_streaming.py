@@ -92,8 +92,14 @@ def rewrite_hls_playlist(content: str, video_id: int, query: str, base_dir: str 
     out: list[str] = []
     for line in content.splitlines():
         raw = line.strip()
-        if not raw or raw.startswith("#"):
+        if not raw:
             out.append(line)
+            continue
+        if raw.startswith("#"):
+            # fMP4 的初始化段写在 #EXT-X-MAP:URI="init.mp4" 里；不改写的话
+            # 浏览器会按相对路径请求 /hls/stream_N/init.mp4——不带鉴权参数，
+            # 需要登录的视频会 403。
+            out.append(_rewrite_map_uri(raw, prefix, suffix))
             continue
         if raw.startswith("http://") or raw.startswith("https://"):
             out.append(line)
@@ -105,6 +111,25 @@ def rewrite_hls_playlist(content: str, video_id: int, query: str, base_dir: str 
             continue
         out.append(prefix + uri + suffix)
     return "\n".join(out) + "\n"
+
+
+def _rewrite_map_uri(line: str, prefix: str, suffix: str) -> str:
+    """改写 #EXT-X-MAP:URI="..." 中的相对 URI；其余注释行原样返回。"""
+    key = "#EXT-X-MAP:URI="
+    idx = line.find(key)
+    if idx < 0:
+        return line
+    rest = line[idx + len(key) :]
+    quote = rest[:1]
+    if quote not in {'"', "'"}:
+        return line
+    end = rest.find(quote, 1)
+    if end < 0:
+        return line
+    uri = rest[1:end]
+    if not uri or uri.startswith("http://") or uri.startswith("https://") or uri.startswith("/api/videos/"):
+        return line
+    return line[: idx + len(key)] + quote + prefix + uri + suffix + quote + rest[end + 1 :]
 
 
 def build_video_stream_response(request: Request, path: Path, media_type: str) -> Response:

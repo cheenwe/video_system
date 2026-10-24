@@ -45,3 +45,28 @@ def test_rewrite_playlist_does_not_double_prefix():
     content = "/api/videos/9/hls/stream_0/seg_000.ts\n"
     out = rewrite_hls_playlist(content, 9, "token=t", "stream_0")
     assert out.count("/api/videos/9/hls/") == 1
+
+
+def test_rewrite_playlist_rewrites_fmp4_init_segment():
+    """fMP4 的初始化段在 #EXT-X-MAP:URI= 里，也必须带上鉴权参数。
+
+    不改写时浏览器按相对路径请求 /hls/stream_N/init.mp4，不带 token，
+    需要登录的视频会 403。
+    """
+    content = (
+        "#EXTM3U\n"
+        '#EXT-X-MAP:URI="init.mp4"\n'
+        "#EXTINF:4.0,\n"
+        "seg_000.m4s\n"
+    )
+    out = rewrite_hls_playlist(content, 4, "token=t", "stream_1")
+    assert '#EXT-X-MAP:URI="/api/videos/4/hls/stream_1/init.mp4?token=t"' in out
+    assert "/api/videos/4/hls/stream_1/seg_000.m4s?token=t" in out
+    # 其他注释行不受影响
+    assert "#EXTINF:4.0," in out
+
+
+def test_rewrite_playlist_map_uri_absolute_unchanged():
+    content = '#EXT-X-MAP:URI="/api/videos/4/hls/stream_1/init.mp4"\n'
+    out = rewrite_hls_playlist(content, 4, "token=t", "stream_1")
+    assert out.count("/api/videos/4/hls/") == 1

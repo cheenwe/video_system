@@ -4,7 +4,7 @@ from src.models.user import User
 from src.models.sys_config import SysConfig
 from src.models.sys_log import SysLog
 from src.models.auth_revoked_token import AuthRevokedToken
-from src.models.video import Video, VideoAlbum, VideoAlbumItem, VideoCategory, VideoComment, VideoFavorite, VideoLike, VideoShareLink, VideoUploadSession
+from src.models.video import Video, VideoAlbum, VideoAlbumItem, VideoCategory, VideoComment, VideoFavorite, VideoLike, VideoQoEEvent, VideoShareLink, VideoUploadSession
 
 __all__ = [
     "Base",
@@ -18,6 +18,7 @@ __all__ = [
     "VideoAlbumItem",
     "VideoComment",
     "VideoLike",
+    "VideoQoEEvent",
     "VideoFavorite",
     "VideoShareLink",
     "VideoUploadSession",
