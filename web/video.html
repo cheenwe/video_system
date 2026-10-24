@@ -202,12 +202,30 @@
         const streamSrc = VideoHub.streamUrl(v.id, accessToken);
         const hlsSrc = v.hls_url ? VideoHub.hlsUrl(v.id, accessToken) : null;
         const poster = v.cover_url ? VideoHub.coverUrl(v.cover_url, accessToken) : "";
-        VideoPlayer.mount(document.getElementById("playerArea"), {
+        const player = VideoPlayer.mount(document.getElementById("playerArea"), {
           mp4Src: streamSrc,
           hlsSrc: hlsSrc,
           poster: poster,
           onPlay: recordViewOnce,
+          // QoE 采集：TTFF / waiting 次数与时长 / 当前档位 / 回退原因。
+          // 目前只做本地留存与事件派发，接入分析后端时在这里上报即可。
+          onQoe: function (q) {
+            try {
+              window.__videoQoE = q;
+              window.dispatchEvent(new CustomEvent("videoqoe", { detail: q }));
+              if (q.fallbackReason) console.info("[videoqoe] 回退:", q.fallbackReason, q);
+              else if (q.ttffMs) console.info("[videoqoe] ttff=" + q.ttffMs + "ms", q);
+            } catch (_) {}
+          },
         });
+        if (player) {
+          window.addEventListener("beforeunload", function () {
+            try {
+              const q = player.getQoe && player.getQoe();
+              if (q) console.info("[videoqoe] final", q);
+            } catch (_) {}
+          });
+        }
       }
       loadSidebar(v.id, qsAlbum());
       VideoComments.mount(v.id, "commentSection");

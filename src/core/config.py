@@ -98,10 +98,27 @@ class Settings(BaseSettings):
 
     # 上传后生成 HLS 切片（弱网自适应播放）；需 ffmpeg
     VIDEO_HLS_ENABLED: bool = True
-    # 高清源额外生成 480p 档位（双码率自适应）
+    # 高清源额外生成低清档位（多码率自适应，弱网可降到 360p）
     VIDEO_HLS_ABR: bool = True
     VIDEO_HLS_SEGMENT_SEC: int = Field(default=6, ge=2, le=15)
+    # 弱网低档位用更短切片，加快起播与切档恢复
+    VIDEO_HLS_LOW_SEGMENT_SEC: int = Field(default=4, ge=2, le=15)
+    # 额外生成 240p 档位；存储与转码成本更高，弱网收益明显
+    VIDEO_HLS_240P: bool = False
+    # 是否启用更低码率档位（480p/360p/240p）；关闭则只保留主档
+    VIDEO_HLS_ABR_LADDER: bool = True
+    # 生成切片时强制关键帧与切片时长对齐（GOP 对齐）
+    VIDEO_HLS_KEYFRAME_ALIGN: bool = True
+    # 用 ffprobe 探测真实码率写入 master.m3u8（关闭则用预设估值）
+    VIDEO_HLS_PROBE_BITRATE: bool = True
+    # 码率探测时最多抽样多少个切片估算峰值
+    VIDEO_HLS_PROBE_SAMPLE_SEGMENTS: int = Field(default=5, ge=1, le=20)
+    # .ts 切片缓存时长（秒）；切片内容寻址且 URL 带鉴权参数，可长缓存
+    VIDEO_HLS_SEGMENT_CACHE_SEC: int = Field(default=86400, ge=60, le=604800)
     VIDEO_HLS_TIMEOUT_SEC: int = Field(default=7200, ge=120, le=14400)
+
+    # MP4 Range 回退的单次分块大小（KB）；弱网调小可降低单次等待
+    VIDEO_STREAM_CHUNK_KB: int = Field(default=256, ge=32, le=4096)
 
     SECRET_KEY: str = "app-platform-change-this-in-production"
     JWT_ALGORITHM: str = "HS256"

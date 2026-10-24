@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from src.core.database import get_db
+from src.core.config import settings
 from src.core.video_streaming import rewrite_hls_playlist
 from src.core.deps import get_client_ip, get_current_user, get_optional_user, get_request_id
 from src.core.exceptions import BizError, ok
@@ -331,16 +332,28 @@ def api_video_hls(
     auth_q = _hls_auth_query(request, v)
 
     if asset.suffix.lower() == ".m3u8":
-        body = rewrite_hls_playlist(asset.read_text(encoding="utf-8"), video_id, auth_q)
+        # base_dir 让分段 URI 带上 playlist 自己的目录（如 stream_1/），
+        # 否则变体 playlist 里的 seg_000.ts 会被改写到 /hls/seg_000.ts 而 404。
+        base_dir = asset_path.strip("/").rsplit("/", 1)[0] if "/" in asset_path.strip("/") else ""
+        body = rewrite_hls_playlist(
+            asset.read_text(encoding="utf-8"), video_id, auth_q, base_dir
+        )
+        # playlist 会被鉴权改写，且内容随切片变化，必须每次校验
         headers = {
-            "Cache-Control": "private, max-age=60",
+            "Cache-Control": "private, max-age=60, must-revalidate",
             "Content-Disposition": "inline",
         }
         if request.method == "HEAD":
             return Response(status_code=200, headers=headers, media_type=media)
         return Response(content=body, media_type=media, headers=headers)
 
-    headers = {"Cache-Control": "private, max-age=86400", "Content-Disposition": "inline"}
+    # .ts 切片是内容寻址的（文件名不变、内容不变），且 URL 已带鉴权参数，
+    # 因此可以长缓存：弱网下重复切片不再回源，断网重连后也无需重新请求。
+    # 私有缓存（private）确保共享代理不缓存他人可访问的隐私视频。
+    headers = {
+        "Cache-Control": f"private, max-age={settings.VIDEO_HLS_SEGMENT_CACHE_SEC}, immutable",
+        "Content-Disposition": "inline",
+    }
     if request.method == "HEAD":
         headers["Content-Length"] = str(asset.stat().st_size)
         return Response(status_code=200, headers=headers, media_type=media)

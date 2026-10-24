@@ -55,6 +55,8 @@ class MediaProbe:
     format_name: str | None
     width: int = 0
     height: int = 0
+    # 视频帧率；用于把「切片时长」换算成 GOP 大小（关键帧对齐）
+    fps: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -108,7 +110,7 @@ def probe_media(path: Path) -> MediaProbe:
             "-show_entries",
             "format=duration,format_name",
             "-show_entries",
-            "stream=codec_name,codec_type,width,height",
+            "stream=codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate",
             "-of",
             "json",
             str(path),
@@ -137,6 +139,7 @@ def probe_media(path: Path) -> MediaProbe:
     audio_codec = None
     width = 0
     height = 0
+    fps = 0.0
     for stream in data.get("streams") or []:
         ctype = stream.get("codec_type")
         codec = _normalize_codec(stream.get("codec_name"))
@@ -147,11 +150,31 @@ def probe_media(path: Path) -> MediaProbe:
                 height = int(stream.get("height") or 0)
             except (TypeError, ValueError):
                 width = height = 0
+            fps = _parse_frame_rate(stream.get("avg_frame_rate") or stream.get("r_frame_rate"))
         elif ctype == "audio" and audio_codec is None:
             audio_codec = codec
 
     fmt = data.get("format", {}).get("format_name")
-    return MediaProbe(duration, video_codec, audio_codec, fmt, width, height)
+    return MediaProbe(duration, video_codec, audio_codec, fmt, width, height, fps)
+
+
+def _parse_frame_rate(raw: object) -> float:
+    """ffprobe 的帧率是 "30/1" 这样的分数；解析失败返回 0。"""
+    if raw is None:
+        return 0.0
+    text = str(raw).strip()
+    if not text or text in {"0/0", "N/A"}:
+        return 0.0
+    try:
+        if "/" in text:
+            num, den = text.split("/", 1)
+            den_f = float(den)
+            if den_f == 0:
+                return 0.0
+            return float(num) / den_f
+        return float(text)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _codecs_web_playable(probe: MediaProbe) -> bool:
@@ -280,7 +303,13 @@ def prepare_for_web_playback(src: Path, upload_id: str) -> PreparedVideo:
 
             video_hls_service.generate_hls(out, upload_id, final_probe)
         except Exception as exc:
-            logger.warning("HLS 切片生成失败，将仅使用 MP4 播放: %s", exc)
+            # 播放仍可走 MP4 Range，但弱网自适应会失效，因此这里必须留痕：
+            # 此前只打 warning，导致「档位生成失败」长期无人发现。
+            logger.warning(
+                "HLS 切片生成失败，将仅使用 MP4 播放: %s；可用 python scripts/backfill_hls.py "
+                "--video-id <id> 重试，详见 docs/weak-network-playback.md",
+                exc,
+            )
 
     return PreparedVideo(
         path=out,

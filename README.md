@@ -151,12 +151,27 @@ python -m uvicorn src.main:app --host 0.0.0.0 --port 8808 --reload
 | `VIDEO_MAX_UPLOAD_MB` | 单文件上限（默认 5120 MB） |
 | `VIDEO_CHUNK_SIZE_MB` | 分片大小（默认 5 MB） |
 | `VIDEO_TRANSCODE_ENABLED` | 是否自动转码为 MP4（默认 `true`） |
+| `VIDEO_HLS_*` | HLS 多码率阶梯：档位开关、切片时长、关键帧对齐、真实码率探测、切片缓存 |
+| `VIDEO_STREAM_CHUNK_KB` | MP4 Range 回退分块大小（默认 256 KB） |
 | `REDIS_URL` | Redis 连接串；Docker 内默认 `redis://redis:6379/0` |
 | `BACKUP_EMAIL_*` / `SMTP_*` | 可选定时数据库备份邮件 |
 | `APT_MIRROR` | Docker 构建 Debian 源：`huawei`（默认）/ `off` |
 | `PIP_MIRROR` | Docker 构建 PyPI：`tsinghua`（默认）/ `off` |
 
 完整说明见 `.env.example` 与 **[docs/deploy.md](docs/deploy.md)**。
+
+### 弱网播放
+
+点播默认走 HLS 多码率（主档 + 480p + 360p，可开 240p）+ MP4 Range 回退，
+播放器会自动降档、有限重试，并提供「流畅优先」一键锁最低档。
+参数、限速验收步骤与已知代价见 **[docs/weak-network-playback.md](docs/weak-network-playback.md)**。
+
+存量视频补切片：
+
+```bash
+python scripts/backfill_hls.py --dry-run   # 先看有多少条待处理
+python scripts/backfill_hls.py             # 全量补切片
+```
 
 ## Docker 部署
 
@@ -191,6 +206,7 @@ curl -fsS http://127.0.0.1:8808/api/health
 | 文档 | 说明 |
 |------|------|
 | [docs/deploy.md](docs/deploy.md) | 部署指南（Docker、转码、Redis、CI、排障） |
+| [docs/weak-network-playback.md](docs/weak-network-playback.md) | 弱网流畅播放：参数、限速验收、已知代价 |
 | [docs/系统使用说明手册.md](docs/系统使用说明手册.md) | 面向业务用户的功能与 FAQ |
 | [docs/项目目录规范.md](docs/项目目录规范.md) | 仓库目录与模块划分 |
 

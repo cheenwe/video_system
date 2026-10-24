@@ -8,8 +8,19 @@ from typing import Iterator, Optional
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
+from src.core.config import settings
+
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 _DEFAULT_CHUNK = 256 * 1024  # 256KB，弱网下减少单次等待
+
+
+def default_chunk_size() -> int:
+    """单次分块大小（字节），由 VIDEO_STREAM_CHUNK_KB 控制。
+
+    弱网调小（如 64KB）可降低单次等待与失败重传成本；调大则提高吞吐。
+    """
+    kb = getattr(settings, "VIDEO_STREAM_CHUNK_KB", 256) or 256
+    return max(32, min(int(kb), 4096)) * 1024
 
 
 def parse_range_header(range_header: str, file_size: int) -> Optional[tuple[int, int]]:
@@ -35,12 +46,19 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[tuple[int,
     return start, end
 
 
-def iter_file_range(path: Path, start: int, end: int, chunk_size: int = _DEFAULT_CHUNK) -> Iterator[bytes]:
+def iter_file_range(
+    path: Path,
+    start: int,
+    end: int,
+    chunk_size: int | None = None,
+) -> Iterator[bytes]:
+    """按分块输出 [start, end] 区间；chunk_size 为空时用配置值。"""
+    size = chunk_size or default_chunk_size()
     with path.open("rb") as fh:
         fh.seek(start)
         remaining = end - start + 1
         while remaining > 0:
-            data = fh.read(min(chunk_size, remaining))
+            data = fh.read(min(size, remaining))
             if not data:
                 break
             remaining -= len(data)
@@ -57,10 +75,20 @@ def _base_headers(media_type: str, file_size: int) -> dict[str, str]:
     }
 
 
-def rewrite_hls_playlist(content: str, video_id: int, query: str) -> str:
-    """将 m3u8 内相对 URI 改写为带鉴权参数的 API 地址。"""
+def rewrite_hls_playlist(content: str, video_id: int, query: str, base_dir: str = "") -> str:
+    """将 m3u8 内相对 URI 改写为带鉴权参数的 API 地址。
+
+    base_dir 是当前 playlist 在 HLS 目录内的相对目录（如 "stream_1"）。
+    VOD 的 master.m3u8 指向 `stream_1/playlist.m3u8`，而该 playlist 内的
+    分段写的是裸 `seg_000.ts`——若不带 base_dir，改写结果会丢掉 stream_1/
+    前缀而指向不存在的路径。master 自身（base_dir 为空）不受影响。
+    """
     q = query.strip("&")
     suffix = ("?" + q) if q else ""
+    base = (base_dir or "").strip("/")
+    prefix = f"/api/videos/{video_id}/hls/"
+    if base:
+        prefix += base + "/"
     out: list[str] = []
     for line in content.splitlines():
         raw = line.strip()
@@ -71,7 +99,11 @@ def rewrite_hls_playlist(content: str, video_id: int, query: str) -> str:
             out.append(line)
             continue
         uri = raw.split("?", 1)[0]
-        out.append(f"/api/videos/{video_id}/hls/{uri}{suffix}")
+        # 分段已是绝对路径（历史数据或外部改写）时保持原样，避免拼出双前缀
+        if uri.startswith("/api/videos/"):
+            out.append(line)
+            continue
+        out.append(prefix + uri + suffix)
     return "\n".join(out) + "\n"
 
 
