@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>V视频站 · 基于 Python 的视频点播网站 (FastAPI)</title>
+<meta name="description" content="可自部署的视频点播与管理平台：投稿、自动转码、HLS 流式播放、弱网优化、管理后台，Docker Compose 一键部署。">
+<style>
+  :root {
+    --bg: #f6f8fa; --card: #ffffff; --ink: #1f2328; --muted: #62707e;
+    --line: #dbe1e8; --accent: #0d9488; --accent-strong: #0f766e;
+    --accent-tint: rgba(13, 148, 136, 0.09); --chip: #eef1f4;
+    --hero-a: #0f766e; --hero-b: #155e75;
+    --pre-bg: #0d1117; --pre-ink: #e6edf3; --code-ink: #a5d6ff;
+    --shadow: 0 1px 2px rgba(16,24,32,.05), 0 10px 28px -18px rgba(16,24,32,.18);
+    --shadow-hover: 0 2px 4px rgba(16,24,32,.06), 0 18px 40px -18px rgba(16,24,32,.30);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --card: #151b23; --ink: #e6edf3; --muted: #9198a1;
+      --line: #2a3138; --accent: #2dd4bf; --accent-strong: #5eead4;
+      --accent-tint: rgba(45,212,191,.10); --chip: #1d242d;
+      --hero-a: #134e4a; --hero-b: #164e63;
+      --pre-bg: #0a0e14;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.5);
+      --shadow-hover: 0 2px 4px rgba(0,0,0,.45), 0 18px 40px -18px rgba(0,0,0,.65);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); line-height: 1.75;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent); color: #fff; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-strong); }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 18px; }
+
+  /* ---- hero ---- */
+  .hero {
+    padding: 72px 0 56px; text-align: center;
+    background:
+      radial-gradient(700px 240px at 18% 0%, rgba(255,255,255,.13), transparent 70%),
+      linear-gradient(135deg, var(--hero-a), var(--hero-b));
+    color: #fff;
+  }
+  .hero h1 { margin: 0 0 6px; font-size: 42px; letter-spacing: 1px; }
+  .hero h1 .v {
+    display: inline-block; background: rgba(255,255,255,.16); border: 2px solid rgba(255,255,255,.55);
+    border-radius: 12px; padding: 0 14px; margin-right: 12px; font-family: var(--mono);
+  }
+  .hero .sub { margin: 0 auto; max-width: 640px; font-size: 17px; color: rgba(255,255,255,.82); }
+  .hero .badges { margin-top: 18px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .hero .badges span {
+    font-family: var(--mono); font-size: 12.5px; padding: 3px 12px; border-radius: 999px;
+    background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.3); color: #fff;
+  }
+  .hero .cta { margin-top: 26px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 10px;
+    font-size: 15px; font-weight: 600; transition: all .18s ease; border: 1px solid transparent;
+  }
+  .btn.primary { background: #fff; color: var(--hero-a); }
+  .btn.primary:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -10px rgba(0,0,0,.45); }
+  .btn.ghost { border-color: rgba(255,255,255,.5); color: #fff; }
+  .btn.ghost:hover { background: rgba(255,255,255,.12); }
+  .play-tri {
+    display: inline-block; width: 0; height: 0; margin-left: 2px;
+    border-left: 9px solid currentColor; border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent;
+  }
+
+  /* ---- sections ---- */
+  section { padding: 44px 0 8px; }
+  h2.sec { font-size: 24px; margin: 0 0 6px; text-align: center; }
+  p.sec-desc { text-align: center; color: var(--muted); font-size: 14.5px; margin: 0 0 26px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; box-shadow: var(--shadow); transition: all .2s ease;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); border-color: var(--accent); }
+  .card h3 { margin: 0 0 8px; font-size: 16.5px; }
+  .card .icon {
+    display: inline-flex; width: 38px; height: 38px; align-items: center; justify-content: center;
+    border-radius: 10px; background: var(--accent-tint); color: var(--accent);
+    font-size: 19px; margin-bottom: 10px;
+  }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+  .card p b { color: var(--ink); font-weight: 600; }
+
+  /* ---- weak network ---- */
+  .weak {
+    margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: var(--shadow); padding: 24px 26px;
+  }
+  .flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 14px 0 4px; }
+  .flow .step {
+    flex: 1; min-width: 130px; background: var(--chip); border-radius: 10px; padding: 10px 14px;
+    font-size: 13.5px; color: var(--ink); position: relative;
+  }
+  .flow .step b { display: block; color: var(--accent); font-size: 12px; font-family: var(--mono); margin-bottom: 2px; }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+  .weak .note { color: var(--muted); font-size: 13.5px; margin-top: 10px; }
+
+  /* ---- tech stack ---- */
+  .stack { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .stack span {
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 18px; font-size: 14px; color: var(--ink); box-shadow: var(--shadow);
+    font-family: var(--mono);
+  }
+
+  /* ---- quick start ---- */
+  .term {
+    background: var(--pre-bg); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; margin: 0 0 16px; box-shadow: var(--shadow);
+  }
+  .term .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; border-bottom: 1px solid rgba(230,237,243,.12);
+    color: rgba(230,237,243,.6); font-size: 12.5px; font-family: var(--mono);
+  }
+  .term .copy {
+    background: transparent; border: 1px solid rgba(230,237,243,.25); color: rgba(230,237,243,.7);
+    border-radius: 6px; font-size: 12px; padding: 2px 10px; cursor: pointer; font-family: var(--mono);
+  }
+  .term .copy:hover { border-color: var(--accent); color: #fff; }
+  .term pre {
+    margin: 0; padding: 16px 18px; overflow-x: auto; color: var(--pre-ink);
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.7;
+  }
+  .term pre .c { color: #8b949e; } .term pre .p { color: #7ee787; } .term pre .s { color: #a5d6ff; }
+
+  /* ---- docs ---- */
+  .docs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  @media (max-width: 700px) { .docs { grid-template-columns: 1fr; } }
+  .docs a {
+    display: flex; align-items: center; gap: 12px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px;
+    color: var(--ink); box-shadow: var(--shadow); transition: all .18s ease;
+  }
+  .docs a:hover { border-color: var(--accent); transform: translateY(-2px); color: var(--ink); }
+  .docs a .d-icon { color: var(--accent); font-size: 18px; }
+  .docs a .t b { display: block; font-size: 14.5px; }
+  .docs a .t i { font-style: normal; color: var(--muted); font-size: 12.5px; }
+
+  footer {
+    margin-top: 52px; border-top: 1px solid var(--line); padding: 26px 0 40px;
+    text-align: center; color: var(--muted); font-size: 13.5px;
+  }
+  footer .links { margin-top: 6px; }
+  footer .links a { margin: 0 10px; }
+
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 30px; }
+    .hero .sub { font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1><span class="v">▶</span>V视频站</h1>
+    <p class="sub">基于 Python 的视频点播网站（FastAPI 版）—— 从投稿、自动转码、存储，到前台播放与后台运营的一体化自部署方案。</p>
+    <div class="badges">
+      <span>FastAPI</span><span>SQLAlchemy 2.x</span><span>ffmpeg 自动转码</span><span>HLS 多码率</span><span>Redis 7</span><span>Docker Compose</span>
+    </div>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/cheenwe/video_system"><span class="play-tri"></span>GitHub 仓库</a>
+      <a class="btn ghost" href="#quickstart">快速开始</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section id="features">
+    <h2 class="sec">功能一览</h2>
+    <p class="sec-desc">前台面向观众与 UP 主，后台面向管理员与内容维护者，参考 B 站 / YouTube 的浏览与播放体验。</p>
+    <div class="grid">
+      <div class="card">
+        <span class="icon">▶</span>
+        <h3>前台播放体验</h3>
+        <p><b>B 站风格 UI</b>，HTML5 流式播放、断点续传、相关推荐与专辑分集；点赞、收藏、分享，评论游客可预览。</p>
+      </div>
+      <div class="card">
+        <span class="icon">⇄</span>
+        <h3>智能转码</h3>
+        <p>上传 <b>MOV / MKV / AVI / WebM</b> 自动转为可播的 <b>MP4 (H.264 + AAC)</b>；已是 H.264 的文件优先 <b>重封装</b>，秒级完成。</p>
+      </div>
+      <div class="card">
+        <span class="icon">⚡</span>
+        <h3>弱网流畅播放</h3>
+        <p><b>HLS 多码率</b>自动降档 + MP4 Range 回退，关键帧对齐、真实码率探测，「流畅优先」一键锁档。</p>
+      </div>
+      <div class="card">
+        <span class="icon">✎</span>
+        <h3>投稿与上传</h3>
+        <p><b>分片上传</b>大文件（默认上限 5GB）、封面裁剪、分类与专辑关联；隐私视频专区登录可见。</p>
+      </div>
+      <div class="card">
+        <span class="icon">▦</span>
+        <h3>管理后台</h3>
+        <p>数据概览、视频 / 专辑 / 分类 / 用户 / 评论管理，<b>站点外观自定义</b>（Logo、主题色、版权），操作日志与服务器指标。</p>
+      </div>
+      <div class="card">
+        <span class="icon">◈</span>
+        <h3>安全与权限</h3>
+        <p><b>JWT</b> 会话、加密播放链接（不暴露数字 ID）、限时免登录分享、游客播放开关、可选定时数据库备份邮件。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="weak-network">
+    <h2 class="sec">弱网播放链路</h2>
+    <p class="sec-desc">默认 HLS 多码率（主档 + 480p + 360p，可开 240p），弱网自动降档、有限重试，全程可观测。</p>
+    <div class="weak">
+      <div class="flow">
+        <div class="step"><b>UPLOAD</b>分片上传 / 自动转码</div>
+        <span class="arrow">→</span>
+        <div class="step"><b>TRANSCODE</b>ffmpeg 多档切片 · 关键帧对齐</div>
+        <span class="arrow">→</span>
+        <div class="step"><b>STREAM</b>HLS 自适应码率</div>
+        <span class="arrow">→</span>
+        <div class="step"><b>FALLBACK</b>MP4 Range 分块回退</div>
+        <span class="arrow">→</span>
+        <div class="step"><b>QOE</b>播放质量采集报表</div>
+      </div>
+      <p class="note">增强项按需开启：fMP4/CMAF 切片、S3/CDN 流量下沉、Service Worker 分片缓存、HLS 缺片巡检补齐（<font style="font-family:var(--mono)">VIDEO_HLS_* / VIDEO_QOE_ENABLED</font> 等开关）。</p>
+    </div>
+  </section>
+
+  <section id="stack">
+    <h2 class="sec">技术栈</h2>
+    <p class="sec-desc">学习 Web 全栈开发、课程作品或内部小型视频库的完整参考实现。</p>
+    <div class="stack">
+      <span>Python · FastAPI</span><span>SQLAlchemy 2.x</span><span>Alembic</span><span>MySQL / SQLite</span>
+      <span>Redis 7</span><span>ffmpeg / ffprobe</span><span>APScheduler</span><span>JWT</span>
+      <span>原生 HTML/CSS/JS</span><span>Docker Compose</span><span>Nginx</span><span>systemd</span>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <h2 class="sec">快速开始</h2>
+    <p class="sec-desc">两种方式，均默认监听 <font style="font-family:var(--mono)">8808</font> 端口；默认管理员 admin，生产环境务必修改密码与 SECRET_KEY。</p>
+
+    <div class="term">
+      <div class="bar"><span>本地运行 · venv</span><button class="copy" data-target="code-local">复制</button></div>
+      <pre id="code-local"><span class="c"># 1. 安装依赖（转码需本机 ffmpeg）</span>
+python -m venv .venv && <span class="p">source</span> .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+
+<span class="c"># 2. 建表 + 默认管理员</span>
+python scripts/init_data.py
+
+<span class="c"># 3. 启动</span>
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8808</pre>
+    </div>
+
+    <div class="term">
+      <div class="bar"><span>Docker Compose · 含 MySQL/Redis/Nginx</span><button class="copy" data-target="code-docker">复制</button></div>
+      <pre id="code-docker"><span class="c"># SQLite 单机（含 Redis）</span>
+docker compose --profile sqlite up -d --build
+
+<span class="c"># MySQL 生产（Nginx 反代）</span>
+docker compose --profile prod --profile mysql up -d --build
+
+<span class="c"># 健康检查</span>
+curl -fsS <span class="s">http://127.0.0.1:8808/api/health</span></pre>
+    </div>
+  </section>
+
+  <section id="docs">
+    <h2 class="sec">文档</h2>
+    <p class="sec-desc">部署指南、弱网验收、使用手册与目录规范，均在仓库 docs/ 目录。</p>
+    <div class="docs">
+      <a href="https://github.com/cheenwe/video_system/blob/master/docs/deploy.md">
+        <span class="d-icon">🚀</span>
+        <span class="t"><b>部署指南</b><i>Docker、转码、Redis、CI、排障</i></span>
+      </a>
+      <a href="https://github.com/cheenwe/video_system/blob/master/docs/weak-network-playback.md">
+        <span class="d-icon">📶</span>
+        <span class="t"><b>弱网流畅播放</b><i>参数、限速验收、已知代价</i></span>
+      </a>
+      <a href="https://github.com/cheenwe/video_system/blob/master/docs/系统使用说明手册.md">
+        <span class="d-icon">📖</span>
+        <span class="t"><b>系统使用说明手册</b><i>面向业务用户的功能与 FAQ</i></span>
+      </a>
+      <a href="https://github.com/cheenwe/video_system/blob/master/docs/项目目录规范.md">
+        <span class="d-icon">🗂</span>
+        <span class="t"><b>项目目录规范</b><i>仓库目录与模块划分</i></span>
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div>基于 Python 与 FastAPI 的视频点播平台 · 适合自部署、学习与小型视频库场景</div>
+  <div class="links">
+    <a href="https://github.com/cheenwe/video_system">GitHub</a>·
+    <a href="https://github.com/cheenwe/video_system/issues">Issues</a>·
+    <a href="https://github.com/cheenwe/video_system/blob/master/LICENSE">MIT License</a>
+    <span>© 2026 cheenwe</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  document.querySelectorAll(".term .copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = document.getElementById(btn.dataset.target).innerText;
+      function done() { btn.textContent = "已复制 ✓"; setTimeout(function () { btn.textContent = "复制"; }, 1600); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta); done();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
